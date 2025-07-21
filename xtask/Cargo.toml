@@ -9,4 +9,4 @@ publish                = false
 
 
 [dependencies]
-clap.workspace                  = true
+clap.workspace = true
