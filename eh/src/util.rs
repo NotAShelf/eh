@@ -55,27 +55,17 @@ impl NixFileFixer for DefaultNixFileFixer {
 
     fn find_nix_files(&self) -> Vec<PathBuf> {
         let mut files = Vec::new();
-        let candidates = [
-            "default.nix",
-            "package.nix",
-            "shell.nix",
-            "flake.nix",
-            "nix/default.nix",
-            "nix/package.nix",
-            "nix/site.nix",
-        ];
-        for candidate in &candidates {
-            let path = Path::new(candidate);
-            if path.exists() {
-                files.push(path.to_path_buf());
-            }
-        }
-        if let Ok(entries) = fs::read_dir(".") {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(ext) = path.extension() {
-                    if ext.eq_ignore_ascii_case("nix") && !files.contains(&path) {
-                        files.push(path);
+        let mut stack = vec![PathBuf::from(".")];
+        while let Some(dir) = stack.pop() {
+            if let Ok(entries) = fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        stack.push(path);
+                    } else if let Some(ext) = path.extension() {
+                        if ext.eq_ignore_ascii_case("nix") {
+                            files.push(path);
+                        }
                     }
                 }
             }
@@ -96,15 +86,20 @@ impl NixFileFixer for DefaultNixFileFixer {
                     format!(r#"outputHash = "{new_hash}""#),
                 ),
             ];
+            let mut new_content = content.clone();
+            let mut replaced = false;
             for (pattern, replacement) in &patterns {
                 if let Ok(re) = Regex::new(pattern) {
-                    if re.is_match(&content) {
-                        let new_content = re.replace_all(&content, replacement);
-                        if fs::write(file_path, new_content.as_ref()).is_ok() {
-                            return true;
-                        }
+                    if re.is_match(&new_content) {
+                        new_content = re
+                            .replace_all(&new_content, replacement.as_str())
+                            .into_owned();
+                        replaced = true;
                     }
                 }
+            }
+            if replaced && fs::write(file_path, new_content).is_ok() {
+                return true;
             }
         }
         false
