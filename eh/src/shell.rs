@@ -1,8 +1,4 @@
-use crate::command::{NixCommand, StdIoInterceptor};
-use crate::util::{HashExtractor, NixErrorClassifier, NixFileFixer};
-use std::io::Write;
-use tracing::{info, warn};
-use yansi::Paint;
+use crate::util::{HashExtractor, NixErrorClassifier, NixFileFixer, handle_nix_with_retry};
 
 pub fn handle_nix_shell(
     args: &[String],
@@ -10,90 +6,5 @@ pub fn handle_nix_shell(
     fixer: &dyn NixFileFixer,
     classifier: &dyn NixErrorClassifier,
 ) {
-    let mut cmd = NixCommand::new("shell")
-        .print_build_logs(true)
-        .interactive(true);
-    for arg in args {
-        cmd = cmd.arg(arg);
-    }
-    let status = cmd
-        .run_with_logs(StdIoInterceptor)
-        .expect("failed to run nix shell");
-    if status.success() {
-        std::process::exit(0);
-    }
-
-    // Try to capture error output for retry logic
-    let output = NixCommand::new("shell")
-        .print_build_logs(true)
-        .args(args.iter().cloned())
-        .output()
-        .expect("failed to capture output");
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    if let Some(new_hash) = hash_extractor.extract_hash(&stderr) {
-        if fixer.fix_hash_in_files(&new_hash) {
-            info!("{}", Paint::green("✔ Fixed hash mismatch, retrying..."));
-            let retry_status = NixCommand::new("shell")
-                .print_build_logs(true)
-                .interactive(true)
-                .args(args.iter().cloned())
-                .run_with_logs(StdIoInterceptor)
-                .unwrap();
-            std::process::exit(retry_status.code().unwrap_or(1));
-        }
-    }
-
-    if classifier.should_retry(&stderr) {
-        if stderr.contains("unfree") {
-            warn!(
-                "{}",
-                Paint::yellow("⚠ Unfree package detected, retrying with NIXPKGS_ALLOW_UNFREE=1...")
-            );
-            let retry_status = NixCommand::new("shell")
-                .print_build_logs(true)
-                .interactive(true)
-                .args(args.iter().cloned())
-                .env("NIXPKGS_ALLOW_UNFREE", "1")
-                .impure(true)
-                .run_with_logs(StdIoInterceptor)
-                .unwrap();
-            std::process::exit(retry_status.code().unwrap_or(1));
-        }
-        if stderr.contains("insecure") {
-            warn!(
-                "{}",
-                Paint::yellow(
-                    "⚠ Insecure package detected, retrying with NIXPKGS_ALLOW_INSECURE=1..."
-                )
-            );
-            let retry_status = NixCommand::new("shell")
-                .print_build_logs(true)
-                .interactive(true)
-                .args(args.iter().cloned())
-                .env("NIXPKGS_ALLOW_INSECURE", "1")
-                .impure(true)
-                .run_with_logs(StdIoInterceptor)
-                .unwrap();
-            std::process::exit(retry_status.code().unwrap_or(1));
-        }
-        if stderr.contains("broken") {
-            warn!(
-                "{}",
-                Paint::yellow("⚠ Broken package detected, retrying with NIXPKGS_ALLOW_BROKEN=1...")
-            );
-            let retry_status = NixCommand::new("shell")
-                .print_build_logs(true)
-                .interactive(true)
-                .args(args.iter().cloned())
-                .env("NIXPKGS_ALLOW_BROKEN", "1")
-                .impure(true)
-                .run_with_logs(StdIoInterceptor)
-                .unwrap();
-            std::process::exit(retry_status.code().unwrap_or(1));
-        }
-    }
-
-    std::io::stderr().write_all(output.stderr.as_ref()).unwrap();
-    std::process::exit(status.code().unwrap_or(1));
+    handle_nix_with_retry("shell", args, hash_extractor, fixer, classifier, true);
 }
