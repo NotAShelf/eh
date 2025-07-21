@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use regex::Regex;
 use std::env;
 use std::fs;
@@ -7,11 +7,32 @@ use std::path::Path;
 use std::process::{Command as StdCommand, Stdio};
 
 #[derive(Parser)]
-#[command(name = "nix-helper")]
-#[command(about = "Smart Nix helper utility")]
+#[command(name = "eh")]
+#[command(about = "Ergonomic Nix helper", long_about = None)]
 struct Cli {
-    #[arg(trailing_var_arg = true)]
-    args: Vec<String>,
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(clap::Subcommand)]
+enum Command {
+    /// Run a Nix derivation
+    Run {
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+
+    /// Enter a Nix shell
+    Shell {
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+
+    /// Build a Nix derivation
+    Build {
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
 }
 
 fn main() {
@@ -20,17 +41,35 @@ fn main() {
         .as_ref()
         .and_then(|p| Path::new(p).file_name())
         .and_then(|name| name.to_str())
-        .unwrap_or("nix-helper");
+        .unwrap_or("eh");
+
+    // Multicall logic
+    if app_name == "nr" {
+        let args: Vec<String> = env::args().skip(1).collect();
+        handle_nix_run(&args);
+        return;
+    }
+    if app_name == "ns" {
+        let args: Vec<String> = env::args().skip(1).collect();
+        handle_nix_shell(&args);
+        return;
+    }
+    if app_name == "nb" {
+        let args: Vec<String> = env::args().skip(1).collect();
+        handle_nix_build(&args);
+        return;
+    }
 
     let cli = Cli::parse();
 
-    match app_name {
-        "nr" => handle_nix_run(&cli.args),
-        "ns" => handle_nix_shell(&cli.args),
-        "nb" => handle_nix_build(&cli.args),
-        _ => {
-            eprintln!("Unknown command: {app_name}");
-            std::process::exit(1);
+    match cli.command {
+        Some(Command::Run { args }) => handle_nix_run(&args),
+        Some(Command::Shell { args }) => handle_nix_shell(&args),
+        Some(Command::Build { args }) => handle_nix_build(&args),
+        None => {
+            Cli::command().print_help().unwrap();
+            println!();
+            std::process::exit(0);
         }
     }
 }
