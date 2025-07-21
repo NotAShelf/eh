@@ -3,6 +3,7 @@ use std::env;
 use std::path::Path;
 
 mod build;
+mod command;
 mod run;
 mod shell;
 mod util;
@@ -45,17 +46,26 @@ fn main() {
     match app_name {
         "nr" => {
             let rest: Vec<String> = args.collect();
-            run::handle_nix_run(&rest);
+            let hash_extractor = util::RegexHashExtractor;
+            let fixer = util::DefaultNixFileFixer;
+            let classifier = util::DefaultNixErrorClassifier;
+            run::handle_nix_run(&rest, &hash_extractor, &fixer, &classifier);
             return;
         }
         "ns" => {
             let rest: Vec<String> = args.collect();
-            shell::handle_nix_shell(&rest);
+            let hash_extractor = util::RegexHashExtractor;
+            let fixer = util::DefaultNixFileFixer;
+            let classifier = util::DefaultNixErrorClassifier;
+            shell::handle_nix_shell(&rest, &hash_extractor, &fixer, &classifier);
             return;
         }
         "nb" => {
             let rest: Vec<String> = args.collect();
-            build::handle_nix_build(&rest);
+            let hash_extractor = util::RegexHashExtractor;
+            let fixer = util::DefaultNixFileFixer;
+            let classifier = util::DefaultNixErrorClassifier;
+            build::handle_nix_build(&rest, &hash_extractor, &fixer, &classifier);
             return;
         }
         _ => {}
@@ -63,10 +73,20 @@ fn main() {
 
     let cli = Cli::parse();
 
+    let hash_extractor = util::RegexHashExtractor;
+    let fixer = util::DefaultNixFileFixer;
+    let classifier = util::DefaultNixErrorClassifier;
+
     match cli.command {
-        Some(Command::Run { args }) => run::handle_nix_run(&args),
-        Some(Command::Shell { args }) => shell::handle_nix_shell(&args),
-        Some(Command::Build { args }) => build::handle_nix_build(&args),
+        Some(Command::Run { args }) => {
+            run::handle_nix_run(&args, &hash_extractor, &fixer, &classifier);
+        }
+        Some(Command::Shell { args }) => {
+            shell::handle_nix_shell(&args, &hash_extractor, &fixer, &classifier);
+        }
+        Some(Command::Build { args }) => {
+            build::handle_nix_build(&args, &hash_extractor, &fixer, &classifier);
+        }
         None => {
             Cli::command().print_help().unwrap();
             println!();
