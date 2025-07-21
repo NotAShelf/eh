@@ -27,6 +27,7 @@ pub struct NixCommand {
     env: Vec<(String, String)>,
     impure: bool,
     print_build_logs: bool,
+    interactive: bool,
 }
 
 impl NixCommand {
@@ -37,6 +38,7 @@ impl NixCommand {
             env: Vec::new(),
             impure: false,
             print_build_logs: true,
+            interactive: false,
         }
     }
 
@@ -64,6 +66,11 @@ impl NixCommand {
         self
     }
 
+    pub fn interactive(mut self, yes: bool) -> Self {
+        self.interactive = yes;
+        self
+    }
+
     pub fn print_build_logs(mut self, yes: bool) -> Self {
         self.print_build_logs = yes;
         self
@@ -87,6 +94,13 @@ impl NixCommand {
             cmd.env(k, v);
         }
         cmd.args(&self.args);
+
+        if self.interactive {
+            cmd.stdout(Stdio::inherit());
+            cmd.stderr(Stdio::inherit());
+            return cmd.status();
+        }
+
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
@@ -149,8 +163,14 @@ impl NixCommand {
             cmd.env(k, v);
         }
         cmd.args(&self.args);
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
+
+        if self.interactive {
+            cmd.stdout(Stdio::inherit());
+            cmd.stderr(Stdio::inherit());
+        } else {
+            cmd.stdout(Stdio::piped());
+            cmd.stderr(Stdio::piped());
+        }
 
         cmd.output()
     }

@@ -10,7 +10,9 @@ pub fn handle_nix_shell(
     fixer: &dyn NixFileFixer,
     classifier: &dyn NixErrorClassifier,
 ) {
-    let mut cmd = NixCommand::new("shell").print_build_logs(true);
+    let mut cmd = NixCommand::new("shell")
+        .print_build_logs(true)
+        .interactive(true);
     for arg in args {
         cmd = cmd.arg(arg);
     }
@@ -18,9 +20,10 @@ pub fn handle_nix_shell(
         .run_with_logs(StdIoInterceptor)
         .expect("failed to run nix shell");
     if status.success() {
-        return;
+        std::process::exit(0);
     }
 
+    // Try to capture error output for retry logic
     let output = NixCommand::new("shell")
         .print_build_logs(true)
         .args(args.iter().cloned())
@@ -33,6 +36,7 @@ pub fn handle_nix_shell(
             info!("{}", Paint::green("✔ Fixed hash mismatch, retrying..."));
             let retry_status = NixCommand::new("shell")
                 .print_build_logs(true)
+                .interactive(true)
                 .args(args.iter().cloned())
                 .run_with_logs(StdIoInterceptor)
                 .unwrap();
@@ -48,6 +52,7 @@ pub fn handle_nix_shell(
             );
             let retry_status = NixCommand::new("shell")
                 .print_build_logs(true)
+                .interactive(true)
                 .args(args.iter().cloned())
                 .env("NIXPKGS_ALLOW_UNFREE", "1")
                 .impure(true)
@@ -64,6 +69,7 @@ pub fn handle_nix_shell(
             );
             let retry_status = NixCommand::new("shell")
                 .print_build_logs(true)
+                .interactive(true)
                 .args(args.iter().cloned())
                 .env("NIXPKGS_ALLOW_INSECURE", "1")
                 .impure(true)
@@ -78,6 +84,7 @@ pub fn handle_nix_shell(
             );
             let retry_status = NixCommand::new("shell")
                 .print_build_logs(true)
+                .interactive(true)
                 .args(args.iter().cloned())
                 .env("NIXPKGS_ALLOW_BROKEN", "1")
                 .impure(true)
