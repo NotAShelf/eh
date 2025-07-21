@@ -1,6 +1,8 @@
 use crate::command::{NixCommand, StdIoInterceptor};
 use crate::util::{HashExtractor, NixErrorClassifier, NixFileFixer};
 use std::io::Write;
+use tracing::{info, warn};
+use yansi::Paint;
 
 pub fn handle_nix_build(
     args: &[String],
@@ -28,7 +30,7 @@ pub fn handle_nix_build(
 
     if let Some(new_hash) = hash_extractor.extract_hash(&stderr) {
         if fixer.fix_hash_in_files(&new_hash) {
-            eprintln!("\x1b[32m✔ Fixed hash mismatch, retrying...\x1b[0m");
+            info!("{}", Paint::green("✔ Fixed hash mismatch, retrying..."));
             let retry_status = NixCommand::new("build")
                 .print_build_logs(true)
                 .args(args.iter().cloned())
@@ -40,8 +42,9 @@ pub fn handle_nix_build(
 
     if classifier.should_retry(&stderr) {
         if stderr.contains("unfree") {
-            eprintln!(
-                "\x1b[33m⚠ Unfree package detected, retrying with NIXPKGS_ALLOW_UNFREE=1...\x1b[0m"
+            warn!(
+                "{}",
+                Paint::yellow("⚠ Unfree package detected, retrying with NIXPKGS_ALLOW_UNFREE=1...")
             );
             let retry_status = NixCommand::new("build")
                 .print_build_logs(true)
@@ -53,8 +56,11 @@ pub fn handle_nix_build(
             std::process::exit(retry_status.code().unwrap_or(1));
         }
         if stderr.contains("insecure") {
-            eprintln!(
-                "\x1b[33m⚠ Insecure package detected, retrying with NIXPKGS_ALLOW_INSECURE=1...\x1b[0m"
+            warn!(
+                "{}",
+                Paint::yellow(
+                    "⚠ Insecure package detected, retrying with NIXPKGS_ALLOW_INSECURE=1..."
+                )
             );
             let retry_status = NixCommand::new("build")
                 .print_build_logs(true)
@@ -66,8 +72,9 @@ pub fn handle_nix_build(
             std::process::exit(retry_status.code().unwrap_or(1));
         }
         if stderr.contains("broken") {
-            eprintln!(
-                "\x1b[33m⚠ Broken package detected, retrying with NIXPKGS_ALLOW_BROKEN=1...\x1b[0m"
+            warn!(
+                "{}",
+                Paint::yellow("⚠ Broken package detected, retrying with NIXPKGS_ALLOW_BROKEN=1...")
             );
             let retry_status = NixCommand::new("build")
                 .print_build_logs(true)
