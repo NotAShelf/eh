@@ -3,7 +3,7 @@ on: [push, workflow_dispatch]
 
 jobs:
   build:
-    runs-on: poseidon-runner
+    runs-on: docker
     steps:
     - uses: actions/checkout@v4
 
