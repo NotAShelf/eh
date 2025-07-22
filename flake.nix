@@ -1,6 +1,5 @@
 {
-  description = "Rust Project Template";
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs?ref=nixos-unstable";
 
   outputs = {
     self,
@@ -8,11 +7,11 @@
   }: let
     systems = ["x86_64-linux" "aarch64-linux"];
     forEachSystem = nixpkgs.lib.genAttrs systems;
-
     pkgsForEach = nixpkgs.legacyPackages;
   in {
     packages = forEachSystem (system: {
-      default = pkgsForEach.${system}.callPackage ./nix/package.nix {};
+      eh = pkgsForEach.${system}.callPackage ./nix/package.nix {};
+      default = self.packages.${system}.eh;
     });
 
     devShells = forEachSystem (system: {
@@ -20,5 +19,6 @@
     });
 
     hydraJobs = self.packages;
+    checks = self.packages // self.devShells;
   };
 }
