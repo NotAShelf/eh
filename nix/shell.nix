@@ -4,6 +4,7 @@
   rustfmt,
   clippy,
   cargo,
+  taplo,
   rustPlatform,
 }:
 mkShell {
@@ -13,6 +14,8 @@ mkShell {
     rustfmt
     clippy
     cargo
+
+    taplo
   ];
 
   RUST_SRC_PATH = "${rustPlatform.rustLibSrc}";
