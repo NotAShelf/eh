@@ -6,5 +6,5 @@ pub fn handle_nix_run(
     fixer: &dyn NixFileFixer,
     classifier: &dyn NixErrorClassifier,
 ) {
-    handle_nix_with_retry("run", args, hash_extractor, fixer, classifier, false);
+    handle_nix_with_retry("run", args, hash_extractor, fixer, classifier, true);
 }

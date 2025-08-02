@@ -1,4 +1,4 @@
-use clap::{CommandFactory, Parser, Subcommand};
+use eh::{Cli, Command, CommandFactory, Parser};
 use std::env;
 use std::path::Path;
 
@@ -7,33 +7,6 @@ mod command;
 mod run;
 mod shell;
 mod util;
-
-#[derive(Parser)]
-#[command(name = "eh")]
-#[command(about = "Ergonomic Nix helper", long_about = None)]
-struct Cli {
-    #[command(subcommand)]
-    command: Option<Command>,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    /// Run a Nix derivation
-    Run {
-        #[arg(trailing_var_arg = true)]
-        args: Vec<String>,
-    },
-    /// Enter a Nix shell
-    Shell {
-        #[arg(trailing_var_arg = true)]
-        args: Vec<String>,
-    },
-    /// Build a Nix derivation
-    Build {
-        #[arg(trailing_var_arg = true)]
-        args: Vec<String>,
-    },
-}
 
 fn main() {
     let format = tracing_subscriber::fmt::format()

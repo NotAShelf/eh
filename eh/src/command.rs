@@ -98,6 +98,7 @@ impl NixCommand {
         if self.interactive {
             cmd.stdout(Stdio::inherit());
             cmd.stderr(Stdio::inherit());
+            cmd.stdin(Stdio::inherit());
             return cmd.status();
         }
 
@@ -167,6 +168,7 @@ impl NixCommand {
         if self.interactive {
             cmd.stdout(Stdio::inherit());
             cmd.stderr(Stdio::inherit());
+            cmd.stdin(Stdio::inherit());
         } else {
             cmd.stdout(Stdio::piped());
             cmd.stderr(Stdio::piped());

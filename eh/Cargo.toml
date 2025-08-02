@@ -6,6 +6,10 @@ edition.workspace      = true
 authors.workspace      = true
 rust-version.workspace = true
 
+[lib]
+name = "eh"
+crate-type = ["lib"]
+
 [dependencies]
 clap.workspace               = true
 regex.workspace              = true

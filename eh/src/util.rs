@@ -15,9 +15,9 @@ pub struct RegexHashExtractor;
 impl HashExtractor for RegexHashExtractor {
     fn extract_hash(&self, stderr: &str) -> Option<String> {
         let patterns = [
-            r"got:\s+([a-zA-Z0-9+/=]+)",
-            r"actual:\s+([a-zA-Z0-9+/=]+)",
-            r"have:\s+([a-zA-Z0-9+/=]+)",
+            r"got:\s+(sha256-[a-zA-Z0-9+/=]+)",
+            r"actual:\s+(sha256-[a-zA-Z0-9+/=]+)",
+            r"have:\s+(sha256-[a-zA-Z0-9+/=]+)",
         ];
         for pattern in &patterns {
             if let Ok(re) = Regex::new(pattern) {
@@ -110,6 +110,43 @@ pub trait NixErrorClassifier {
     fn should_retry(&self, stderr: &str) -> bool;
 }
 
+/// Pre-evaluate expression to catch errors early
+fn pre_evaluate(_subcommand: &str, args: &[String]) -> bool {
+    // Find flake references or expressions to evaluate
+    // Only take the first non-flag argument (the package/expression)
+    let eval_arg = args.iter().find(|arg| !arg.starts_with('-'));
+
+    let Some(eval_arg) = eval_arg else {
+        return true; // No expression to evaluate
+    };
+
+    let eval_cmd = NixCommand::new("eval").arg(eval_arg).arg("--raw");
+
+    let output = match eval_cmd.output() {
+        Ok(output) => output,
+        Err(_) => return false,
+    };
+
+    if output.status.success() {
+        return true;
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // If eval fails due to unfree/insecure/broken, don't fail pre-evaluation
+    // Let the main command handle it with retry logic
+    if stderr.contains("has an unfree license")
+        || stderr.contains("refusing to evaluate")
+        || stderr.contains("has been marked as insecure")
+        || stderr.contains("has been marked as broken")
+    {
+        return true;
+    }
+
+    // For other eval failures, fail early
+    false
+}
+
 /// Shared retry logic for nix commands (build/run/shell).
 pub fn handle_nix_with_retry(
     subcommand: &str,
@@ -119,29 +156,36 @@ pub fn handle_nix_with_retry(
     classifier: &dyn NixErrorClassifier,
     interactive: bool,
 ) -> ! {
-    let mut cmd = NixCommand::new(subcommand).print_build_logs(true);
-    if interactive {
-        cmd = cmd.interactive(true);
-    }
-    for arg in args {
-        cmd = cmd.arg(arg);
-    }
-    let status = cmd
-        .run_with_logs(StdIoInterceptor)
-        .expect("failed to run nix command");
-    if status.success() {
-        std::process::exit(0);
+    // Pre-evaluate for build commands to catch errors early
+    if !pre_evaluate(subcommand, args) {
+        eprintln!("Error: Expression evaluation failed");
+        std::process::exit(1);
     }
 
-    let mut output_cmd = NixCommand::new(subcommand)
+    // For run commands, try interactive first to avoid breaking terminal
+    if subcommand == "run" && interactive {
+        let mut cmd = NixCommand::new(subcommand)
+            .print_build_logs(true)
+            .interactive(true);
+        for arg in args {
+            cmd = cmd.arg(arg);
+        }
+        let status = cmd
+            .run_with_logs(StdIoInterceptor)
+            .expect("failed to run nix command");
+        if status.success() {
+            std::process::exit(0);
+        }
+    }
+
+    // First, always capture output to check for errors that need retry
+    let output_cmd = NixCommand::new(subcommand)
         .print_build_logs(true)
         .args(args.iter().cloned());
-    if interactive {
-        output_cmd = output_cmd.interactive(true);
-    }
     let output = output_cmd.output().expect("failed to capture output");
     let stderr = String::from_utf8_lossy(&output.stderr);
 
+    // Check if we need to retry with special flags
     if let Some(new_hash) = hash_extractor.extract_hash(&stderr) {
         if fixer.fix_hash_in_files(&new_hash) {
             info!("{}", Paint::green("✔ Fixed hash mismatch, retrying..."));
@@ -157,7 +201,7 @@ pub fn handle_nix_with_retry(
     }
 
     if classifier.should_retry(&stderr) {
-        if stderr.contains("unfree") {
+        if stderr.contains("has an unfree license") && stderr.contains("refusing") {
             warn!(
                 "{}",
                 Paint::yellow("⚠ Unfree package detected, retrying with NIXPKGS_ALLOW_UNFREE=1...")
@@ -173,7 +217,7 @@ pub fn handle_nix_with_retry(
             let retry_status = retry_cmd.run_with_logs(StdIoInterceptor).unwrap();
             std::process::exit(retry_status.code().unwrap_or(1));
         }
-        if stderr.contains("insecure") {
+        if stderr.contains("has been marked as insecure") && stderr.contains("refusing") {
             warn!(
                 "{}",
                 Paint::yellow(
@@ -191,7 +235,7 @@ pub fn handle_nix_with_retry(
             let retry_status = retry_cmd.run_with_logs(StdIoInterceptor).unwrap();
             std::process::exit(retry_status.code().unwrap_or(1));
         }
-        if stderr.contains("broken") {
+        if stderr.contains("has been marked as broken") && stderr.contains("refusing") {
             warn!(
                 "{}",
                 Paint::yellow("⚠ Broken package detected, retrying with NIXPKGS_ALLOW_BROKEN=1...")
@@ -209,16 +253,22 @@ pub fn handle_nix_with_retry(
         }
     }
 
+    // If the first attempt succeeded, we're done
+    if output.status.success() {
+        std::process::exit(0);
+    }
+
+    // Otherwise, show the error and exit
     std::io::stderr().write_all(output.stderr.as_ref()).unwrap();
-    std::process::exit(status.code().unwrap_or(1));
+    std::process::exit(output.status.code().unwrap_or(1));
 }
 pub struct DefaultNixErrorClassifier;
 
 impl NixErrorClassifier for DefaultNixErrorClassifier {
     fn should_retry(&self, stderr: &str) -> bool {
         RegexHashExtractor.extract_hash(stderr).is_some()
-            || (stderr.contains("unfree") && stderr.contains("refusing"))
-            || (stderr.contains("insecure") && stderr.contains("refusing"))
-            || (stderr.contains("broken") && stderr.contains("refusing"))
+            || (stderr.contains("has an unfree license") && stderr.contains("refusing"))
+            || (stderr.contains("has been marked as insecure") && stderr.contains("refusing"))
+            || (stderr.contains("has been marked as broken") && stderr.contains("refusing"))
     }
 }
