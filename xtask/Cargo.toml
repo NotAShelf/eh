@@ -10,3 +10,5 @@ publish                = false
 
 [dependencies]
 clap.workspace = true
+clap_complete.workspace = true
+eh = { path = "../eh" }

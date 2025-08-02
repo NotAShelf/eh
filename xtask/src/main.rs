@@ -4,7 +4,8 @@ use std::{
     process,
 };
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::{Shell, generate};
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -23,6 +24,15 @@ enum Command {
         /// Path to the main binary.
         #[arg(long, default_value = "target/release/eh")]
         main_binary: PathBuf,
+    },
+    /// Generate shell completion scripts
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+        /// Directory to output completion files
+        #[arg(long, default_value = "completions")]
+        output_dir: PathBuf,
     },
 }
 
@@ -53,6 +63,12 @@ fn main() {
         } => {
             if let Err(error) = create_multicall_binaries(&bin_dir, &main_binary) {
                 eprintln!("error creating multicall binaries: {error}");
+                process::exit(1);
+            }
+        }
+        Command::Completions { shell, output_dir } => {
+            if let Err(error) = generate_completions(shell, &output_dir) {
+                eprintln!("error generating completions: {error}");
                 process::exit(1);
             }
         }
@@ -115,5 +131,45 @@ fn create_multicall_binaries(
     println!("multicall binaries are in: {}", bin_dir.display());
     println!();
 
+    Ok(())
+}
+
+fn generate_completions(shell: Shell, output_dir: &Path) -> Result<(), Box<dyn error::Error>> {
+    println!("generating {} completions...", shell);
+
+    fs::create_dir_all(output_dir)?;
+
+    let mut cmd = eh::Cli::command();
+    let bin_name = "eh";
+
+    let completion_file = output_dir.join(format!("{}.{}", bin_name, shell));
+    let mut file = fs::File::create(&completion_file)?;
+
+    generate(shell, &mut cmd, bin_name, &mut file);
+
+    println!("completion file generated: {}", completion_file.display());
+
+    // Create symlinks for multicall binaries
+    let multicall_names = ["nb", "nr", "ns"];
+    for name in &multicall_names {
+        let symlink_path = output_dir.join(format!("{}.{}", name, shell));
+        if symlink_path.exists() {
+            fs::remove_file(&symlink_path)?;
+        }
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&completion_file, &symlink_path)?;
+            println!("completion symlink created: {}", symlink_path.display());
+        }
+
+        #[cfg(not(unix))]
+        {
+            fs::copy(&completion_file, &symlink_path)?;
+            println!("completion copy created: {}", symlink_path.display());
+        }
+    }
+
+    println!("completions generated successfully!");
     Ok(())
 }

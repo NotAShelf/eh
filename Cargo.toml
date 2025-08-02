@@ -13,6 +13,7 @@ version      = "0.1.1"
 
 [workspace.dependencies]
 clap               = { default-features = false, features = [ "std", "help", "derive" ], version = "4.5" }
+clap_complete      = "4.5"
 regex              = "1.11"
 tracing            = "0.1"
 tracing-subscriber = "0.3"
