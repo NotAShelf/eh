@@ -19,6 +19,5 @@
     });
 
     hydraJobs = self.packages;
-    checks = self.packages // self.devShells;
   };
 }
