@@ -5,6 +5,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
+use walkdir::WalkDir;
 use yansi::Paint;
 
 pub trait HashExtractor {
@@ -54,21 +55,20 @@ impl NixFileFixer for DefaultNixFileFixer {
     }
 
     fn find_nix_files(&self) -> Result<Vec<PathBuf>> {
-        let mut files = Vec::new();
-        let mut stack = vec![PathBuf::from(".")];
-        while let Some(dir) = stack.pop() {
-            let entries = fs::read_dir(&dir)?;
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    stack.push(path);
-                } else if let Some(ext) = path.extension()
-                    && ext.eq_ignore_ascii_case("nix")
-                {
-                    files.push(path);
-                }
-            }
-        }
+        let files: Vec<PathBuf> = WalkDir::new(".")
+            .into_iter()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry.file_type().is_file()
+                    && entry
+                        .path()
+                        .extension()
+                        .map(|ext| ext.eq_ignore_ascii_case("nix"))
+                        .unwrap_or(false)
+            })
+            .map(|entry| entry.path().to_path_buf())
+            .collect();
+
         if files.is_empty() {
             Err(EhError::NoNixFilesFound)
         } else {
