@@ -23,9 +23,10 @@ impl HashExtractor for RegexHashExtractor {
         for pattern in &patterns {
             if let Ok(re) = Regex::new(pattern)
                 && let Some(captures) = re.captures(stderr)
-                    && let Some(hash) = captures.get(1) {
-                        return Some(hash.as_str().to_string());
-                    }
+                && let Some(hash) = captures.get(1)
+            {
+                return Some(hash.as_str().to_string());
+            }
         }
         None
     }
@@ -62,9 +63,10 @@ impl NixFileFixer for DefaultNixFileFixer {
                 if path.is_dir() {
                     stack.push(path);
                 } else if let Some(ext) = path.extension()
-                    && ext.eq_ignore_ascii_case("nix") {
-                        files.push(path);
-                    }
+                    && ext.eq_ignore_ascii_case("nix")
+                {
+                    files.push(path);
+                }
             }
         }
         if files.is_empty() {
@@ -99,10 +101,9 @@ impl NixFileFixer for DefaultNixFileFixer {
             }
         }
         if replaced {
-            fs::write(file_path, new_content)
-                .map_err(|_| EhError::HashFixFailed { 
-                    path: file_path.to_string_lossy().to_string() 
-                })?;
+            fs::write(file_path, new_content).map_err(|_| EhError::HashFixFailed {
+                path: file_path.to_string_lossy().to_string(),
+            })?;
             Ok(true)
         } else {
             Ok(false)

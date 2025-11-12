@@ -33,7 +33,8 @@ pub enum EhError {
 pub type Result<T> = std::result::Result<T, EhError>;
 
 impl EhError {
-    #[must_use] pub const fn exit_code(&self) -> i32 {
+    #[must_use]
+    pub const fn exit_code(&self) -> i32 {
         match self {
             Self::ProcessExit { code } => *code,
             Self::NixCommandFailed(_) => 1,

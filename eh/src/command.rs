@@ -62,17 +62,20 @@ impl NixCommand {
         self
     }
 
-    #[must_use] pub const fn impure(mut self, yes: bool) -> Self {
+    #[must_use]
+    pub const fn impure(mut self, yes: bool) -> Self {
         self.impure = yes;
         self
     }
 
-    #[must_use] pub const fn interactive(mut self, yes: bool) -> Self {
+    #[must_use]
+    pub const fn interactive(mut self, yes: bool) -> Self {
         self.interactive = yes;
         self
     }
 
-    #[must_use] pub const fn print_build_logs(mut self, yes: bool) -> Self {
+    #[must_use]
+    pub const fn print_build_logs(mut self, yes: bool) -> Self {
         self.print_build_logs = yes;
         self
     }

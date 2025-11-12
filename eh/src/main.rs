@@ -30,6 +30,36 @@ fn main() {
     }
 }
 
+// Design partially taken from Stash
+fn dispatch_multicall(app_name: &str, args: std::env::Args) -> Option<Result<i32>> {
+    let rest: Vec<String> = args.collect();
+    let hash_extractor = util::RegexHashExtractor;
+    let fixer = util::DefaultNixFileFixer;
+    let classifier = util::DefaultNixErrorClassifier;
+
+    match app_name {
+        "nr" => Some(run::handle_nix_run(
+            &rest,
+            &hash_extractor,
+            &fixer,
+            &classifier,
+        )),
+        "ns" => Some(shell::handle_nix_shell(
+            &rest,
+            &hash_extractor,
+            &fixer,
+            &classifier,
+        )),
+        "nb" => Some(build::handle_nix_build(
+            &rest,
+            &hash_extractor,
+            &fixer,
+            &classifier,
+        )),
+        _ => None,
+    }
+}
+
 fn run_app() -> Result<i32> {
     let mut args = env::args();
     let bin = args.next().unwrap_or_else(|| "eh".to_string());
@@ -39,31 +69,8 @@ fn run_app() -> Result<i32> {
         .unwrap_or("eh");
 
     // If invoked as nr/ns/nb, dispatch directly and exit
-    match app_name {
-        "nr" => {
-            let rest: Vec<String> = args.collect();
-            let hash_extractor = util::RegexHashExtractor;
-            let fixer = util::DefaultNixFileFixer;
-            let classifier = util::DefaultNixErrorClassifier;
-            return run::handle_nix_run(&rest, &hash_extractor, &fixer, &classifier);
-        }
-
-        "ns" => {
-            let rest: Vec<String> = args.collect();
-            let hash_extractor = util::RegexHashExtractor;
-            let fixer = util::DefaultNixFileFixer;
-            let classifier = util::DefaultNixErrorClassifier;
-            return shell::handle_nix_shell(&rest, &hash_extractor, &fixer, &classifier);
-        }
-
-        "nb" => {
-            let rest: Vec<String> = args.collect();
-            let hash_extractor = util::RegexHashExtractor;
-            let fixer = util::DefaultNixFileFixer;
-            let classifier = util::DefaultNixErrorClassifier;
-            return build::handle_nix_build(&rest, &hash_extractor, &fixer, &classifier);
-        }
-        _ => {}
+    if let Some(result) = dispatch_multicall(app_name, args) {
+        return result;
     }
 
     let cli = Cli::parse();
