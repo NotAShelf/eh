@@ -11,6 +11,7 @@ pub use error::{EhError, Result};
 #[derive(Parser)]
 #[command(name = "eh")]
 #[command(about = "Ergonomic Nix helper", long_about = None)]
+#[command(version)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
