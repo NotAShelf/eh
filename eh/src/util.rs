@@ -1,4 +1,5 @@
 use crate::command::{NixCommand, StdIoInterceptor};
+use crate::error::{EhError, Result};
 use regex::Regex;
 use std::fs;
 use std::io::Write;
@@ -20,89 +21,92 @@ impl HashExtractor for RegexHashExtractor {
             r"have:\s+(sha256-[a-zA-Z0-9+/=]+)",
         ];
         for pattern in &patterns {
-            if let Ok(re) = Regex::new(pattern) {
-                if let Some(captures) = re.captures(stderr) {
-                    if let Some(hash) = captures.get(1) {
+            if let Ok(re) = Regex::new(pattern)
+                && let Some(captures) = re.captures(stderr)
+                    && let Some(hash) = captures.get(1) {
                         return Some(hash.as_str().to_string());
                     }
-                }
-            }
         }
         None
     }
 }
 
 pub trait NixFileFixer {
-    fn fix_hash_in_files(&self, new_hash: &str) -> bool;
-    fn find_nix_files(&self) -> Vec<PathBuf>;
-    fn fix_hash_in_file(&self, file_path: &Path, new_hash: &str) -> bool;
+    fn fix_hash_in_files(&self, new_hash: &str) -> Result<bool>;
+    fn find_nix_files(&self) -> Result<Vec<PathBuf>>;
+    fn fix_hash_in_file(&self, file_path: &Path, new_hash: &str) -> Result<bool>;
 }
 
 pub struct DefaultNixFileFixer;
 
 impl NixFileFixer for DefaultNixFileFixer {
-    fn fix_hash_in_files(&self, new_hash: &str) -> bool {
-        let nix_files = self.find_nix_files();
+    fn fix_hash_in_files(&self, new_hash: &str) -> Result<bool> {
+        let nix_files = self.find_nix_files()?;
         let mut fixed = false;
         for file_path in nix_files {
-            if self.fix_hash_in_file(&file_path, new_hash) {
+            if self.fix_hash_in_file(&file_path, new_hash)? {
                 println!("Updated hash in {}", file_path.display());
                 fixed = true;
             }
         }
-        fixed
+        Ok(fixed)
     }
 
-    fn find_nix_files(&self) -> Vec<PathBuf> {
+    fn find_nix_files(&self) -> Result<Vec<PathBuf>> {
         let mut files = Vec::new();
         let mut stack = vec![PathBuf::from(".")];
         while let Some(dir) = stack.pop() {
-            if let Ok(entries) = fs::read_dir(&dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        stack.push(path);
-                    } else if let Some(ext) = path.extension() {
-                        if ext.eq_ignore_ascii_case("nix") {
-                            files.push(path);
-                        }
+            let entries = fs::read_dir(&dir)?;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if let Some(ext) = path.extension()
+                    && ext.eq_ignore_ascii_case("nix") {
+                        files.push(path);
                     }
-                }
             }
         }
-        files
+        if files.is_empty() {
+            Err(EhError::NoNixFilesFound)
+        } else {
+            Ok(files)
+        }
     }
 
-    fn fix_hash_in_file(&self, file_path: &Path, new_hash: &str) -> bool {
-        if let Ok(content) = fs::read_to_string(file_path) {
-            let patterns = [
-                (r#"hash\s*=\s*"[^"]*""#, format!(r#"hash = "{new_hash}""#)),
-                (
-                    r#"sha256\s*=\s*"[^"]*""#,
-                    format!(r#"sha256 = "{new_hash}""#),
-                ),
-                (
-                    r#"outputHash\s*=\s*"[^"]*""#,
-                    format!(r#"outputHash = "{new_hash}""#),
-                ),
-            ];
-            let mut new_content = content.clone();
-            let mut replaced = false;
-            for (pattern, replacement) in &patterns {
-                if let Ok(re) = Regex::new(pattern) {
-                    if re.is_match(&new_content) {
-                        new_content = re
-                            .replace_all(&new_content, replacement.as_str())
-                            .into_owned();
-                        replaced = true;
-                    }
-                }
-            }
-            if replaced && fs::write(file_path, new_content).is_ok() {
-                return true;
+    fn fix_hash_in_file(&self, file_path: &Path, new_hash: &str) -> Result<bool> {
+        let content = fs::read_to_string(file_path)?;
+        let patterns = [
+            (r#"hash\s*=\s*"[^"]*""#, format!(r#"hash = "{new_hash}""#)),
+            (
+                r#"sha256\s*=\s*"[^"]*""#,
+                format!(r#"sha256 = "{new_hash}""#),
+            ),
+            (
+                r#"outputHash\s*=\s*"[^"]*""#,
+                format!(r#"outputHash = "{new_hash}""#),
+            ),
+        ];
+        let mut new_content = content;
+        let mut replaced = false;
+        for (pattern, replacement) in &patterns {
+            let re = Regex::new(pattern)?;
+            if re.is_match(&new_content) {
+                new_content = re
+                    .replace_all(&new_content, replacement.as_str())
+                    .into_owned();
+                replaced = true;
             }
         }
-        false
+        if replaced {
+            fs::write(file_path, new_content)
+                .map_err(|_| EhError::HashFixFailed { 
+                    path: file_path.to_string_lossy().to_string() 
+                })?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }
 
@@ -111,24 +115,21 @@ pub trait NixErrorClassifier {
 }
 
 /// Pre-evaluate expression to catch errors early
-fn pre_evaluate(_subcommand: &str, args: &[String]) -> bool {
+fn pre_evaluate(_subcommand: &str, args: &[String]) -> Result<bool> {
     // Find flake references or expressions to evaluate
     // Only take the first non-flag argument (the package/expression)
     let eval_arg = args.iter().find(|arg| !arg.starts_with('-'));
 
     let Some(eval_arg) = eval_arg else {
-        return true; // No expression to evaluate
+        return Ok(true); // No expression to evaluate
     };
 
     let eval_cmd = NixCommand::new("eval").arg(eval_arg).arg("--raw");
 
-    let output = match eval_cmd.output() {
-        Ok(output) => output,
-        Err(_) => return false,
-    };
+    let output = eval_cmd.output()?;
 
     if output.status.success() {
-        return true;
+        return Ok(true);
     }
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -140,11 +141,11 @@ fn pre_evaluate(_subcommand: &str, args: &[String]) -> bool {
         || stderr.contains("has been marked as insecure")
         || stderr.contains("has been marked as broken")
     {
-        return true;
+        return Ok(true);
     }
 
     // For other eval failures, fail early
-    false
+    Ok(false)
 }
 
 /// Shared retry logic for nix commands (build/run/shell).
@@ -155,11 +156,12 @@ pub fn handle_nix_with_retry(
     fixer: &dyn NixFileFixer,
     classifier: &dyn NixErrorClassifier,
     interactive: bool,
-) -> ! {
+) -> Result<i32> {
     // Pre-evaluate for build commands to catch errors early
-    if !pre_evaluate(subcommand, args) {
-        eprintln!("Error: Expression evaluation failed");
-        std::process::exit(1);
+    if !pre_evaluate(subcommand, args)? {
+        return Err(EhError::NixCommandFailed(
+            "Expression evaluation failed".to_string(),
+        ));
     }
 
     // For run commands, try interactive first to avoid breaking terminal
@@ -170,11 +172,9 @@ pub fn handle_nix_with_retry(
         for arg in args {
             cmd = cmd.arg(arg);
         }
-        let status = cmd
-            .run_with_logs(StdIoInterceptor)
-            .expect("failed to run nix command");
+        let status = cmd.run_with_logs(StdIoInterceptor)?;
         if status.success() {
-            std::process::exit(0);
+            return Ok(0);
         }
     }
 
@@ -182,22 +182,37 @@ pub fn handle_nix_with_retry(
     let output_cmd = NixCommand::new(subcommand)
         .print_build_logs(true)
         .args(args.iter().cloned());
-    let output = output_cmd.output().expect("failed to capture output");
+    let output = output_cmd.output()?;
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     // Check if we need to retry with special flags
     if let Some(new_hash) = hash_extractor.extract_hash(&stderr) {
-        if fixer.fix_hash_in_files(&new_hash) {
-            info!("{}", Paint::green("✔ Fixed hash mismatch, retrying..."));
-            let mut retry_cmd = NixCommand::new(subcommand)
-                .print_build_logs(true)
-                .args(args.iter().cloned());
-            if interactive {
-                retry_cmd = retry_cmd.interactive(true);
+        match fixer.fix_hash_in_files(&new_hash) {
+            Ok(true) => {
+                info!("{}", Paint::green("✔ Fixed hash mismatch, retrying..."));
+                let mut retry_cmd = NixCommand::new(subcommand)
+                    .print_build_logs(true)
+                    .args(args.iter().cloned());
+                if interactive {
+                    retry_cmd = retry_cmd.interactive(true);
+                }
+                let retry_status = retry_cmd.run_with_logs(StdIoInterceptor)?;
+                return Ok(retry_status.code().unwrap_or(1));
             }
-            let retry_status = retry_cmd.run_with_logs(StdIoInterceptor).unwrap();
-            std::process::exit(retry_status.code().unwrap_or(1));
+            Ok(false) => {
+                // No files were fixed, continue with normal error handling
+            }
+            Err(EhError::NoNixFilesFound) => {
+                warn!("No .nix files found to fix hash in");
+                // Continue with normal error handling
+            }
+            Err(e) => {
+                return Err(e);
+            }
         }
+    } else if stderr.contains("hash") || stderr.contains("sha256") {
+        // If there's a hash-related error but we couldn't extract it, that's a failure
+        return Err(EhError::HashExtractionFailed);
     }
 
     if classifier.should_retry(&stderr) {
@@ -214,8 +229,8 @@ pub fn handle_nix_with_retry(
             if interactive {
                 retry_cmd = retry_cmd.interactive(true);
             }
-            let retry_status = retry_cmd.run_with_logs(StdIoInterceptor).unwrap();
-            std::process::exit(retry_status.code().unwrap_or(1));
+            let retry_status = retry_cmd.run_with_logs(StdIoInterceptor)?;
+            return Ok(retry_status.code().unwrap_or(1));
         }
         if stderr.contains("has been marked as insecure") && stderr.contains("refusing") {
             warn!(
@@ -232,8 +247,8 @@ pub fn handle_nix_with_retry(
             if interactive {
                 retry_cmd = retry_cmd.interactive(true);
             }
-            let retry_status = retry_cmd.run_with_logs(StdIoInterceptor).unwrap();
-            std::process::exit(retry_status.code().unwrap_or(1));
+            let retry_status = retry_cmd.run_with_logs(StdIoInterceptor)?;
+            return Ok(retry_status.code().unwrap_or(1));
         }
         if stderr.contains("has been marked as broken") && stderr.contains("refusing") {
             warn!(
@@ -248,19 +263,21 @@ pub fn handle_nix_with_retry(
             if interactive {
                 retry_cmd = retry_cmd.interactive(true);
             }
-            let retry_status = retry_cmd.run_with_logs(StdIoInterceptor).unwrap();
-            std::process::exit(retry_status.code().unwrap_or(1));
+            let retry_status = retry_cmd.run_with_logs(StdIoInterceptor)?;
+            return Ok(retry_status.code().unwrap_or(1));
         }
     }
 
     // If the first attempt succeeded, we're done
     if output.status.success() {
-        std::process::exit(0);
+        return Ok(0);
     }
 
-    // Otherwise, show the error and exit
-    std::io::stderr().write_all(output.stderr.as_ref()).unwrap();
-    std::process::exit(output.status.code().unwrap_or(1));
+    // Otherwise, show the error and return error
+    std::io::stderr().write_all(&output.stderr)?;
+    Err(EhError::ProcessExit {
+        code: output.status.code().unwrap_or(1),
+    })
 }
 pub struct DefaultNixErrorClassifier;
 

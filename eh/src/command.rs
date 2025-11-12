@@ -1,3 +1,4 @@
+use crate::error::{EhError, Result};
 use std::collections::VecDeque;
 use std::io::{self, Read, Write};
 use std::process::{Command, ExitStatus, Output, Stdio};
@@ -61,17 +62,17 @@ impl NixCommand {
         self
     }
 
-    pub fn impure(mut self, yes: bool) -> Self {
+    #[must_use] pub const fn impure(mut self, yes: bool) -> Self {
         self.impure = yes;
         self
     }
 
-    pub fn interactive(mut self, yes: bool) -> Self {
+    #[must_use] pub const fn interactive(mut self, yes: bool) -> Self {
         self.interactive = yes;
         self
     }
 
-    pub fn print_build_logs(mut self, yes: bool) -> Self {
+    #[must_use] pub const fn print_build_logs(mut self, yes: bool) -> Self {
         self.print_build_logs = yes;
         self
     }
@@ -80,7 +81,7 @@ impl NixCommand {
     pub fn run_with_logs<I: LogInterceptor + 'static>(
         &self,
         mut interceptor: I,
-    ) -> io::Result<ExitStatus> {
+    ) -> Result<ExitStatus> {
         let mut cmd = Command::new("nix");
         cmd.arg(&self.subcommand);
 
@@ -99,15 +100,21 @@ impl NixCommand {
             cmd.stdout(Stdio::inherit());
             cmd.stderr(Stdio::inherit());
             cmd.stdin(Stdio::inherit());
-            return cmd.status();
+            return Ok(cmd.status()?);
         }
 
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
         let mut child = cmd.spawn()?;
-        let mut stdout = child.stdout.take().unwrap();
-        let mut stderr = child.stderr.take().unwrap();
+        let child_stdout = child.stdout.take().ok_or_else(|| EhError::CommandFailed {
+            command: format!("nix {}", self.subcommand),
+        })?;
+        let child_stderr = child.stderr.take().ok_or_else(|| EhError::CommandFailed {
+            command: format!("nix {}", self.subcommand),
+        })?;
+        let mut stdout = child_stdout;
+        let mut stderr = child_stderr;
 
         let mut out_buf = [0u8; 4096];
         let mut err_buf = [0u8; 4096];
@@ -126,7 +133,7 @@ impl NixCommand {
                     did_something = true;
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(e) => return Err(e),
+                Err(e) => return Err(EhError::Io(e)),
             }
 
             match stderr.read(&mut err_buf) {
@@ -137,7 +144,7 @@ impl NixCommand {
                     did_something = true;
                 }
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(e) => return Err(e),
+                Err(e) => return Err(EhError::Io(e)),
             }
 
             if !did_something && child.try_wait()?.is_some() {
@@ -150,7 +157,7 @@ impl NixCommand {
     }
 
     /// Run the command and capture all output.
-    pub fn output(&self) -> io::Result<Output> {
+    pub fn output(&self) -> Result<Output> {
         let mut cmd = Command::new("nix");
         cmd.arg(&self.subcommand);
 
@@ -174,6 +181,6 @@ impl NixCommand {
             cmd.stderr(Stdio::piped());
         }
 
-        cmd.output()
+        Ok(cmd.output()?)
     }
 }

@@ -1,3 +1,4 @@
+use crate::error::Result;
 use crate::util::{HashExtractor, NixErrorClassifier, NixFileFixer, handle_nix_with_retry};
 
 pub fn handle_nix_build(
@@ -5,6 +6,6 @@ pub fn handle_nix_build(
     hash_extractor: &dyn HashExtractor,
     fixer: &dyn NixFileFixer,
     classifier: &dyn NixErrorClassifier,
-) {
-    handle_nix_with_retry("build", args, hash_extractor, fixer, classifier, false);
+) -> Result<i32> {
+    handle_nix_with_retry("build", args, hash_extractor, fixer, classifier, false)
 }

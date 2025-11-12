@@ -44,7 +44,7 @@ enum Binary {
 }
 
 impl Binary {
-    fn name(self) -> &'static str {
+    const fn name(self) -> &'static str {
         match self {
             Self::Nr => "nr",
             Self::Ns => "ns",
@@ -135,14 +135,14 @@ fn create_multicall_binaries(
 }
 
 fn generate_completions(shell: Shell, output_dir: &Path) -> Result<(), Box<dyn error::Error>> {
-    println!("generating {} completions...", shell);
+    println!("generating {shell} completions...");
 
     fs::create_dir_all(output_dir)?;
 
     let mut cmd = eh::Cli::command();
     let bin_name = "eh";
 
-    let completion_file = output_dir.join(format!("{}.{}", bin_name, shell));
+    let completion_file = output_dir.join(format!("{bin_name}.{shell}"));
     let mut file = fs::File::create(&completion_file)?;
 
     generate(shell, &mut cmd, bin_name, &mut file);
@@ -152,7 +152,7 @@ fn generate_completions(shell: Shell, output_dir: &Path) -> Result<(), Box<dyn e
     // Create symlinks for multicall binaries
     let multicall_names = ["nb", "nr", "ns"];
     for name in &multicall_names {
-        let symlink_path = output_dir.join(format!("{}.{}", name, shell));
+        let symlink_path = output_dir.join(format!("{name}.{shell}"));
         if symlink_path.exists() {
             fs::remove_file(&symlink_path)?;
         }

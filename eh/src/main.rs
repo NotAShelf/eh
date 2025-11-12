@@ -1,9 +1,11 @@
 use eh::{Cli, Command, CommandFactory, Parser};
+use error::Result;
 use std::env;
 use std::path::Path;
 
 mod build;
 mod command;
+mod error;
 mod run;
 mod shell;
 mod util;
@@ -17,6 +19,18 @@ fn main() {
         .compact(); // use the `Compact` formatting style.
     tracing_subscriber::fmt().event_format(format).init();
 
+    let result = run_app();
+
+    match result {
+        Ok(code) => std::process::exit(code),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(e.exit_code());
+        }
+    }
+}
+
+fn run_app() -> Result<i32> {
     let mut args = env::args();
     let bin = args.next().unwrap_or_else(|| "eh".to_string());
     let app_name = Path::new(&bin)
@@ -31,8 +45,7 @@ fn main() {
             let hash_extractor = util::RegexHashExtractor;
             let fixer = util::DefaultNixFileFixer;
             let classifier = util::DefaultNixErrorClassifier;
-            run::handle_nix_run(&rest, &hash_extractor, &fixer, &classifier);
-            return;
+            return run::handle_nix_run(&rest, &hash_extractor, &fixer, &classifier);
         }
 
         "ns" => {
@@ -40,8 +53,7 @@ fn main() {
             let hash_extractor = util::RegexHashExtractor;
             let fixer = util::DefaultNixFileFixer;
             let classifier = util::DefaultNixErrorClassifier;
-            shell::handle_nix_shell(&rest, &hash_extractor, &fixer, &classifier);
-            return;
+            return shell::handle_nix_shell(&rest, &hash_extractor, &fixer, &classifier);
         }
 
         "nb" => {
@@ -49,8 +61,7 @@ fn main() {
             let hash_extractor = util::RegexHashExtractor;
             let fixer = util::DefaultNixFileFixer;
             let classifier = util::DefaultNixErrorClassifier;
-            build::handle_nix_build(&rest, &hash_extractor, &fixer, &classifier);
-            return;
+            return build::handle_nix_build(&rest, &hash_extractor, &fixer, &classifier);
         }
         _ => {}
     }
@@ -63,21 +74,21 @@ fn main() {
 
     match cli.command {
         Some(Command::Run { args }) => {
-            run::handle_nix_run(&args, &hash_extractor, &fixer, &classifier);
+            run::handle_nix_run(&args, &hash_extractor, &fixer, &classifier)
         }
 
         Some(Command::Shell { args }) => {
-            shell::handle_nix_shell(&args, &hash_extractor, &fixer, &classifier);
+            shell::handle_nix_shell(&args, &hash_extractor, &fixer, &classifier)
         }
 
         Some(Command::Build { args }) => {
-            build::handle_nix_build(&args, &hash_extractor, &fixer, &classifier);
+            build::handle_nix_build(&args, &hash_extractor, &fixer, &classifier)
         }
 
         _ => {
-            Cli::command().print_help().unwrap();
+            Cli::command().print_help()?;
             println!();
-            std::process::exit(0);
+            Ok(0)
         }
     }
 }

@@ -1,10 +1,12 @@
 pub mod build;
 pub mod command;
+pub mod error;
 pub mod run;
 pub mod shell;
 pub mod util;
 
 pub use clap::{CommandFactory, Parser, Subcommand};
+pub use error::{EhError, Result};
 
 #[derive(Parser)]
 #[command(name = "eh")]
