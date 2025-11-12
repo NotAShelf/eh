@@ -21,6 +21,9 @@ impl LogInterceptor for StdIoInterceptor {
     }
 }
 
+/// Default buffer size for reading command output
+const DEFAULT_BUFFER_SIZE: usize = 4096;
+
 /// Builder and executor for Nix commands.
 pub struct NixCommand {
     subcommand: String,
@@ -119,8 +122,8 @@ impl NixCommand {
         let mut stdout = child_stdout;
         let mut stderr = child_stderr;
 
-        let mut out_buf = [0u8; 4096];
-        let mut err_buf = [0u8; 4096];
+        let mut out_buf = [0u8; DEFAULT_BUFFER_SIZE];
+        let mut err_buf = [0u8; DEFAULT_BUFFER_SIZE];
 
         let mut out_queue = VecDeque::new();
         let mut err_queue = VecDeque::new();
