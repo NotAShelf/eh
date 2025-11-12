@@ -97,33 +97,30 @@ fn create_multicall_binaries(
             fs::remove_file(&target_path)?;
         }
 
-        match fs::hard_link(main_binary, &target_path) {
-            Ok(()) => {
-                println!(
-                    "  created hardlink: {} points to {}",
-                    target_path.display(),
-                    main_binary.display(),
-                );
+        if let Err(e) = fs::hard_link(main_binary, &target_path) {
+            eprintln!(
+                "  warning: could not create hardlink for {}: {e}",
+                binary.name(),
+            );
+            eprintln!("  warning: falling back to copying binary...");
+
+            fs::copy(main_binary, &target_path)?;
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = fs::metadata(&target_path)?.permissions();
+                perms.set_mode(perms.mode() | 0o755);
+                fs::set_permissions(&target_path, perms)?;
             }
-            Err(e) => {
-                eprintln!(
-                    "  warning: could not create hardlink for {}: {e}",
-                    binary.name(),
-                );
-                eprintln!("  warning: falling back to copying binary...");
 
-                fs::copy(main_binary, &target_path)?;
-
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let mut perms = fs::metadata(&target_path)?.permissions();
-                    perms.set_mode(perms.mode() | 0o755);
-                    fs::set_permissions(&target_path, perms)?;
-                }
-
-                println!("  created copy: {}", target_path.display());
-            }
+            println!("  created copy: {}", target_path.display());
+        } else {
+            println!(
+                "  created hardlink: {} points to {}",
+                target_path.display(),
+                main_binary.display(),
+            );
         }
     }
 

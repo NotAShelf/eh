@@ -70,10 +70,9 @@ impl NixFileFixer for DefaultNixFileFixer {
             .collect();
 
         if files.is_empty() {
-            Err(EhError::NoNixFilesFound)
-        } else {
-            Ok(files)
+            return Err(EhError::NoNixFilesFound);
         }
+        Ok(files)
     }
 
     fn fix_hash_in_file(&self, file_path: &Path, new_hash: &str) -> Result<bool> {
@@ -275,7 +274,9 @@ pub fn handle_nix_with_retry(
     }
 
     // Otherwise, show the error and return error
-    std::io::stderr().write_all(&output.stderr)?;
+    std::io::stderr()
+        .write_all(&output.stderr)
+        .map_err(EhError::Io)?;
     Err(EhError::ProcessExit {
         code: output.status.code().unwrap_or(1),
     })
