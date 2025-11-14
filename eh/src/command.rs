@@ -63,6 +63,11 @@ impl NixCommand {
     self
   }
 
+  pub fn args_ref(mut self, args: &[String]) -> Self {
+    self.args.extend(args.iter().cloned());
+    self
+  }
+
   pub fn env<K: Into<String>, V: Into<String>>(
     mut self,
     key: K,

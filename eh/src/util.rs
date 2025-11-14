@@ -174,13 +174,11 @@ pub fn handle_nix_with_retry(
 
   // For run commands, try interactive first to avoid breaking terminal
   if subcommand == "run" && interactive {
-    let mut cmd = NixCommand::new(subcommand)
+    let status = NixCommand::new(subcommand)
       .print_build_logs(true)
-      .interactive(true);
-    for arg in args {
-      cmd = cmd.arg(arg);
-    }
-    let status = cmd.run_with_logs(StdIoInterceptor)?;
+      .interactive(true)
+      .args_ref(args)
+      .run_with_logs(StdIoInterceptor)?;
     if status.success() {
       return Ok(0);
     }
@@ -189,7 +187,7 @@ pub fn handle_nix_with_retry(
   // First, always capture output to check for errors that need retry
   let output_cmd = NixCommand::new(subcommand)
     .print_build_logs(true)
-    .args(args.iter().cloned());
+    .args_ref(args);
   let output = output_cmd.output()?;
   let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -200,7 +198,7 @@ pub fn handle_nix_with_retry(
         info!("{}", Paint::green("✔ Fixed hash mismatch, retrying..."));
         let mut retry_cmd = NixCommand::new(subcommand)
           .print_build_logs(true)
-          .args(args.iter().cloned());
+          .args_ref(args);
         if interactive {
           retry_cmd = retry_cmd.interactive(true);
         }
@@ -234,7 +232,7 @@ pub fn handle_nix_with_retry(
       );
       let mut retry_cmd = NixCommand::new(subcommand)
         .print_build_logs(true)
-        .args(args.iter().cloned())
+        .args_ref(args)
         .env("NIXPKGS_ALLOW_UNFREE", "1")
         .impure(true);
       if interactive {
@@ -255,7 +253,7 @@ pub fn handle_nix_with_retry(
       );
       let mut retry_cmd = NixCommand::new(subcommand)
         .print_build_logs(true)
-        .args(args.iter().cloned())
+        .args_ref(args)
         .env("NIXPKGS_ALLOW_INSECURE", "1")
         .impure(true);
       if interactive {
@@ -275,7 +273,7 @@ pub fn handle_nix_with_retry(
       );
       let mut retry_cmd = NixCommand::new(subcommand)
         .print_build_logs(true)
-        .args(args.iter().cloned())
+        .args_ref(args)
         .env("NIXPKGS_ALLOW_BROKEN", "1")
         .impure(true);
       if interactive {
