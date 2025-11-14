@@ -1,22 +1,26 @@
 {
   mkShell,
-  rust-analyzer,
+  rustc,
+  cargo,
   rustfmt,
   clippy,
-  cargo,
   taplo,
+  rust-analyzer-unwrapped,
   rustPlatform,
 }:
 mkShell {
   name = "rust";
+
   packages = [
-    rust-analyzer
-    rustfmt
-    clippy
+    rustc
     cargo
 
+    (rustfmt.override {asNightly = true;})
+    clippy
+    cargo
     taplo
+    rust-analyzer-unwrapped
   ];
 
-  RUST_SRC_PATH = "${rustPlatform.rustLibSrc}";
+  env.RUST_SRC_PATH = "${rustPlatform.rustLibSrc}";
 }
