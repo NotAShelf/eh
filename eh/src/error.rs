@@ -28,6 +28,9 @@ pub enum EhError {
 
   #[error("Command execution failed: {command}")]
   CommandFailed { command: String },
+
+  #[error("Invalid input: {input} - {reason}")]
+  InvalidInput { input: String, reason: String },
 }
 
 pub type Result<T> = std::result::Result<T, EhError>;

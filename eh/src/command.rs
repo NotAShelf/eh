@@ -54,6 +54,7 @@ impl NixCommand {
     self
   }
 
+  #[allow(dead_code, reason = "FIXME")]
   pub fn args<I, S>(mut self, args: I) -> Self
   where
     I: IntoIterator<Item = S>,
@@ -63,6 +64,7 @@ impl NixCommand {
     self
   }
 
+  #[must_use]
   pub fn args_ref(mut self, args: &[String]) -> Self {
     self.args.extend(args.iter().cloned());
     self

@@ -15,6 +15,7 @@ version      = "0.1.2"
 clap               = { default-features = false, features = [ "std", "help", "derive" ], version = "4.5.51" }
 clap_complete      = "4.5.60"
 regex              = "1.12.2"
+tempfile           = "3.23.0"
 thiserror          = "2.0.17"
 tracing            = "0.1.41"
 tracing-subscriber = "0.3.20"
