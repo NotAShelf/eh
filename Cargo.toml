@@ -9,7 +9,7 @@ edition      = "2024"
 license      = "MPL-2.0"
 readme       = true
 rust-version = "1.89"
-version      = "0.1.2"
+version      = "0.1.3"
 
 [workspace.dependencies]
 clap               = { default-features = false, features = [ "std", "help", "derive" ], version = "4.5.51" }

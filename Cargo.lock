@@ -78,7 +78,7 @@ checksum = "b94f61472cee1439c0b966b47e3aca9ae07e45d070759512cd390ea2bebc6675"
 
 [[package]]
 name = "eh"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "clap",
  "regex",
@@ -438,7 +438,7 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 
 [[package]]
 name = "xtask"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "clap",
  "clap_complete",
