@@ -174,7 +174,7 @@ fn pre_evaluate(_subcommand: &str, args: &[String]) -> Result<bool> {
   Ok(false)
 }
 
-fn validate_nix_args(args: &[String]) -> Result<()> {
+pub fn validate_nix_args(args: &[String]) -> Result<()> {
   const DANGEROUS_PATTERNS: &[&str] = &[
     ";", "&&", "||", "|", "`", "$(", "${", ">", "<", ">>", "<<", "2>", "2>>",
   ];
