@@ -162,7 +162,8 @@ fn generate_completions(
 
     #[cfg(unix)]
     {
-      std::os::unix::fs::symlink(&completion_file, &symlink_path)?;
+      let canonical_target = fs::canonicalize(&completion_file)?;
+      std::os::unix::fs::symlink(&canonical_target, &symlink_path)?;
       println!("completion symlink created: {}", symlink_path.display());
     }
 
