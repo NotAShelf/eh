@@ -2,6 +2,7 @@ use std::{
   collections::VecDeque,
   io::{self, Read, Write},
   process::{Command, ExitStatus, Output, Stdio},
+  time::{Duration, Instant},
 };
 
 use crate::error::{EhError, Result};
@@ -26,6 +27,9 @@ impl LogInterceptor for StdIoInterceptor {
 
 /// Default buffer size for reading command output
 const DEFAULT_BUFFER_SIZE: usize = 4096;
+
+/// Default timeout for command execution
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
 
 /// Builder and executor for Nix commands.
 pub struct NixCommand {
@@ -147,9 +151,18 @@ impl NixCommand {
 
     let mut out_queue = VecDeque::new();
     let mut err_queue = VecDeque::new();
+    let start_time = Instant::now();
 
     loop {
       let mut did_something = false;
+
+      // Check for timeout
+      if start_time.elapsed() > DEFAULT_TIMEOUT {
+        let _ = child.kill();
+        return Err(EhError::CommandFailed {
+          command: format!("nix {} timed out after 5 minutes", self.subcommand),
+        });
+      }
 
       match stdout.read(&mut out_buf) {
         Ok(0) => {},
@@ -175,6 +188,11 @@ impl NixCommand {
 
       if !did_something && child.try_wait()?.is_some() {
         break;
+      }
+
+      // Prevent busy waiting when no data is available
+      if !did_something {
+        std::thread::sleep(Duration::from_millis(10));
       }
     }
 

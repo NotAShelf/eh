@@ -36,12 +36,12 @@ fn dispatch_multicall(
   args: std::env::Args,
 ) -> Option<Result<i32>> {
   let rest: Vec<String> = args.collect();
-  
+
   // Validate arguments before processing
   if let Err(e) = util::validate_nix_args(&rest) {
     return Some(Err(e));
   }
-  
+
   let hash_extractor = util::RegexHashExtractor;
   let fixer = util::DefaultNixFileFixer;
   let classifier = util::DefaultNixErrorClassifier;

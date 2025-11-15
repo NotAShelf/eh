@@ -40,9 +40,15 @@ impl EhError {
   pub const fn exit_code(&self) -> i32 {
     match self {
       Self::ProcessExit { code } => *code,
-      Self::NixCommandFailed(_) => 1,
-      Self::CommandFailed { .. } => 1,
-      _ => 1,
+      Self::NixCommandFailed(_) => 2,
+      Self::CommandFailed { .. } => 3,
+      Self::HashExtractionFailed => 4,
+      Self::NoNixFilesFound => 5,
+      Self::HashFixFailed { .. } => 6,
+      Self::InvalidInput { .. } => 7,
+      Self::Io(_) => 8,
+      Self::Regex(_) => 9,
+      Self::Utf8(_) => 10,
     }
   }
 }
