@@ -11,20 +11,15 @@ mod shell;
 mod util;
 
 fn main() {
-  let format = tracing_subscriber::fmt::format()
-        .with_level(true) // don't include levels in formatted output
-        .with_target(true) // don't include targets
-        .with_thread_ids(false) // include the thread ID of the current thread
-        .with_thread_names(false) // include the name of the current thread
-        .compact(); // use the `Compact` formatting style.
-  tracing_subscriber::fmt().event_format(format).init();
-
   let result = run_app();
 
   match result {
     Ok(code) => std::process::exit(code),
     Err(e) => {
       eprintln!("Error: {e}");
+      if let Some(hint) = e.hint() {
+        eprintln!("Hint: {hint}");
+      }
       std::process::exit(e.exit_code());
     },
   }
@@ -37,42 +32,42 @@ fn dispatch_multicall(
 ) -> Option<Result<i32>> {
   let rest: Vec<String> = args.collect();
 
-  // Validate arguments before processing
-  if let Err(e) = util::validate_nix_args(&rest) {
-    return Some(Err(e));
+  let subcommand = match app_name {
+    "nr" => "run",
+    "ns" => "shell",
+    "nb" => "build",
+    _ => return None,
+  };
+
+  // Handle --help/-h/--version before forwarding to nix
+  if rest.iter().any(|a| a == "--help" || a == "-h") {
+    eprintln!("{app_name}: shorthand for 'eh {subcommand}'");
+    eprintln!("Usage: {app_name} [args...]");
+    eprintln!("All arguments are forwarded to 'nix {subcommand}'.");
+    return Some(Ok(0));
+  }
+
+  if rest.iter().any(|a| a == "--version") {
+    eprintln!("{app_name} (eh {})", env!("CARGO_PKG_VERSION"));
+    return Some(Ok(0));
   }
 
   let hash_extractor = util::RegexHashExtractor;
   let fixer = util::DefaultNixFileFixer;
   let classifier = util::DefaultNixErrorClassifier;
 
-  match app_name {
-    "nr" => {
-      Some(run::handle_nix_run(
-        &rest,
-        &hash_extractor,
-        &fixer,
-        &classifier,
-      ))
+  Some(match subcommand {
+    "run" => run::handle_nix_run(&rest, &hash_extractor, &fixer, &classifier),
+    "shell" => {
+      shell::handle_nix_shell(&rest, &hash_extractor, &fixer, &classifier)
     },
-    "ns" => {
-      Some(shell::handle_nix_shell(
-        &rest,
-        &hash_extractor,
-        &fixer,
-        &classifier,
-      ))
+    "build" => {
+      build::handle_nix_build(&rest, &hash_extractor, &fixer, &classifier)
     },
-    "nb" => {
-      Some(build::handle_nix_build(
-        &rest,
-        &hash_extractor,
-        &fixer,
-        &classifier,
-      ))
-    },
-    _ => None,
-  }
+    // subcommand is assigned from the match on app_name above;
+    // only "run"/"shell"/"build" are possible values.
+    _ => unreachable!(),
+  })
 }
 
 fn run_app() -> Result<i32> {
@@ -107,7 +102,7 @@ fn run_app() -> Result<i32> {
       build::handle_nix_build(&args, &hash_extractor, &fixer, &classifier)
     },
 
-    _ => {
+    None => {
       Cli::command().print_help()?;
       println!();
       Ok(0)

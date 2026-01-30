@@ -1,11 +1,11 @@
 use std::{
   io::{BufWriter, Write},
   path::{Path, PathBuf},
+  sync::LazyLock,
 };
 
 use regex::Regex;
 use tempfile::NamedTempFile;
-use tracing::{info, warn};
 use walkdir::WalkDir;
 use yansi::Paint;
 
@@ -14,22 +14,41 @@ use crate::{
   error::{EhError, Result},
 };
 
+/// Compiled regex patterns for extracting the actual hash from nix stderr.
+static HASH_EXTRACT_PATTERNS: LazyLock<[Regex; 3]> = LazyLock::new(|| {
+  [
+    Regex::new(r"got:\s+(sha256-[a-zA-Z0-9+/=]+)").unwrap(),
+    Regex::new(r"actual:\s+(sha256-[a-zA-Z0-9+/=]+)").unwrap(),
+    Regex::new(r"have:\s+(sha256-[a-zA-Z0-9+/=]+)").unwrap(),
+  ]
+});
+
+/// Compiled regex pattern for extracting the old (specified) hash from nix
+/// stderr.
+static HASH_OLD_EXTRACT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+  Regex::new(r"specified:\s+(sha256-[a-zA-Z0-9+/=]+)").unwrap()
+});
+
+/// Compiled regex patterns for matching hash attributes in .nix files.
+static HASH_FIX_PATTERNS: LazyLock<[Regex; 3]> = LazyLock::new(|| {
+  [
+    Regex::new(r#"hash\s*=\s*"[^"]*""#).unwrap(),
+    Regex::new(r#"sha256\s*=\s*"[^"]*""#).unwrap(),
+    Regex::new(r#"outputHash\s*=\s*"[^"]*""#).unwrap(),
+  ]
+});
+
 pub trait HashExtractor {
   fn extract_hash(&self, stderr: &str) -> Option<String>;
+  fn extract_old_hash(&self, stderr: &str) -> Option<String>;
 }
 
 pub struct RegexHashExtractor;
 
 impl HashExtractor for RegexHashExtractor {
   fn extract_hash(&self, stderr: &str) -> Option<String> {
-    let patterns = [
-      r"got:\s+(sha256-[a-zA-Z0-9+/=]+)",
-      r"actual:\s+(sha256-[a-zA-Z0-9+/=]+)",
-      r"have:\s+(sha256-[a-zA-Z0-9+/=]+)",
-    ];
-    for pattern in &patterns {
-      if let Ok(re) = Regex::new(pattern)
-        && let Some(captures) = re.captures(stderr)
+    for re in HASH_EXTRACT_PATTERNS.iter() {
+      if let Some(captures) = re.captures(stderr)
         && let Some(hash) = captures.get(1)
       {
         return Some(hash.as_str().to_string());
@@ -37,22 +56,42 @@ impl HashExtractor for RegexHashExtractor {
     }
     None
   }
+
+  fn extract_old_hash(&self, stderr: &str) -> Option<String> {
+    HASH_OLD_EXTRACT_PATTERN
+      .captures(stderr)
+      .and_then(|c| c.get(1))
+      .map(|m| m.as_str().to_string())
+  }
 }
 
 pub trait NixFileFixer {
-  fn fix_hash_in_files(&self, new_hash: &str) -> Result<bool>;
+  fn fix_hash_in_files(
+    &self,
+    old_hash: Option<&str>,
+    new_hash: &str,
+  ) -> Result<bool>;
   fn find_nix_files(&self) -> Result<Vec<PathBuf>>;
-  fn fix_hash_in_file(&self, file_path: &Path, new_hash: &str) -> Result<bool>;
+  fn fix_hash_in_file(
+    &self,
+    file_path: &Path,
+    old_hash: Option<&str>,
+    new_hash: &str,
+  ) -> Result<bool>;
 }
 
 pub struct DefaultNixFileFixer;
 
 impl NixFileFixer for DefaultNixFileFixer {
-  fn fix_hash_in_files(&self, new_hash: &str) -> Result<bool> {
+  fn fix_hash_in_files(
+    &self,
+    old_hash: Option<&str>,
+    new_hash: &str,
+  ) -> Result<bool> {
     let nix_files = self.find_nix_files()?;
     let mut fixed = false;
     for file_path in nix_files {
-      if self.fix_hash_in_file(&file_path, new_hash)? {
+      if self.fix_hash_in_file(&file_path, old_hash, new_hash)? {
         println!("Updated hash in {}", file_path.display());
         fixed = true;
       }
@@ -61,8 +100,20 @@ impl NixFileFixer for DefaultNixFileFixer {
   }
 
   fn find_nix_files(&self) -> Result<Vec<PathBuf>> {
+    let should_skip = |entry: &walkdir::DirEntry| -> bool {
+      // Never skip the root entry, otherwise the entire walk is empty
+      if entry.depth() == 0 || !entry.file_type().is_dir() {
+        return false;
+      }
+      let name = entry.file_name().to_string_lossy();
+      name.starts_with('.')
+        || matches!(name.as_ref(), "node_modules" | "target" | "result")
+    };
+
     let files: Vec<PathBuf> = WalkDir::new(".")
+      .max_depth(3)
       .into_iter()
+      .filter_entry(|e| !should_skip(e))
       .filter_map(std::result::Result::ok)
       .filter(|entry| {
         entry.file_type().is_file()
@@ -80,39 +131,59 @@ impl NixFileFixer for DefaultNixFileFixer {
     Ok(files)
   }
 
-  fn fix_hash_in_file(&self, file_path: &Path, new_hash: &str) -> Result<bool> {
-    // Pre-compile regex patterns once to avoid repeated compilation
-    let patterns: Vec<(Regex, String)> = [
-      (r#"hash\s*=\s*"[^"]*""#, format!(r#"hash = "{new_hash}""#)),
-      (
-        r#"sha256\s*=\s*"[^"]*""#,
-        format!(r#"sha256 = "{new_hash}""#),
-      ),
-      (
-        r#"outputHash\s*=\s*"[^"]*""#,
-        format!(r#"outputHash = "{new_hash}""#),
-      ),
-    ]
-    .into_iter()
-    .map(|(pattern, replacement)| {
-      Regex::new(pattern)
-        .map(|re| (re, replacement))
-        .map_err(EhError::Regex)
-    })
-    .collect::<Result<Vec<_>>>()?;
-
+  fn fix_hash_in_file(
+    &self,
+    file_path: &Path,
+    old_hash: Option<&str>,
+    new_hash: &str,
+  ) -> Result<bool> {
     // Read the entire file content
     let content = std::fs::read_to_string(file_path)?;
     let mut replaced = false;
     let mut result_content = content;
 
-    // Apply replacements
-    for (re, replacement) in &patterns {
-      if re.is_match(&result_content) {
-        result_content = re
-          .replace_all(&result_content, replacement.as_str())
-          .into_owned();
-        replaced = true;
+    if let Some(old) = old_hash {
+      // Targeted replacement: only replace attributes whose value matches the
+      // old hash. Uses regexes to handle variable whitespace around `=`.
+      let old_escaped = regex::escape(old);
+      let targeted_patterns = [
+        (
+          Regex::new(&format!(r#"hash\s*=\s*"{old_escaped}""#)).unwrap(),
+          format!(r#"hash = "{new_hash}""#),
+        ),
+        (
+          Regex::new(&format!(r#"sha256\s*=\s*"{old_escaped}""#)).unwrap(),
+          format!(r#"sha256 = "{new_hash}""#),
+        ),
+        (
+          Regex::new(&format!(r#"outputHash\s*=\s*"{old_escaped}""#)).unwrap(),
+          format!(r#"outputHash = "{new_hash}""#),
+        ),
+      ];
+
+      for (re, replacement) in &targeted_patterns {
+        if re.is_match(&result_content) {
+          result_content = re
+            .replace_all(&result_content, replacement.as_str())
+            .into_owned();
+          replaced = true;
+        }
+      }
+    } else {
+      // Fallback: replace all hash attributes (original behavior)
+      let replacements = [
+        format!(r#"hash = "{new_hash}""#),
+        format!(r#"sha256 = "{new_hash}""#),
+        format!(r#"outputHash = "{new_hash}""#),
+      ];
+
+      for (re, replacement) in HASH_FIX_PATTERNS.iter().zip(&replacements) {
+        if re.is_match(&result_content) {
+          result_content = re
+            .replace_all(&result_content, replacement.as_str())
+            .into_owned();
+          replaced = true;
+        }
       }
     }
 
@@ -140,38 +211,119 @@ pub trait NixErrorClassifier {
   fn should_retry(&self, stderr: &str) -> bool;
 }
 
-/// Pre-evaluate expression to catch errors early
-fn pre_evaluate(_subcommand: &str, args: &[String]) -> Result<bool> {
+/// Classifies what retry action should be taken based on nix stderr output.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RetryAction {
+  AllowUnfree,
+  AllowInsecure,
+  AllowBroken,
+  None,
+}
+
+impl RetryAction {
+  /// Returns `(env_var, reason)` for this retry action,
+  /// or `None` if no retry is needed.
+  fn env_override(&self) -> Option<(&str, &str)> {
+    match self {
+      Self::AllowUnfree => {
+        Some(("NIXPKGS_ALLOW_UNFREE", "has an unfree license"))
+      },
+      Self::AllowInsecure => {
+        Some(("NIXPKGS_ALLOW_INSECURE", "has been marked as insecure"))
+      },
+      Self::AllowBroken => {
+        Some(("NIXPKGS_ALLOW_BROKEN", "has been marked as broken"))
+      },
+      Self::None => None,
+    }
+  }
+}
+
+/// Extract the package/expression name from args (first non-flag argument).
+fn package_name(args: &[String]) -> &str {
+  args
+    .iter()
+    .find(|a| !a.starts_with('-'))
+    .map(String::as_str)
+    .unwrap_or("<unknown>")
+}
+
+/// Print a retry message with consistent formatting.
+/// Format: `  -> <pkg>: <reason>, setting <ENV>=1`
+fn print_retry_msg(pkg: &str, reason: &str, env_var: &str) {
+  eprintln!(
+    "  {} {}: {}, setting {}",
+    "->".yellow().bold(),
+    pkg.bold(),
+    reason,
+    format!("{env_var}=1").bold(),
+  );
+}
+
+/// Classify stderr into a retry action.
+pub fn classify_retry_action(stderr: &str) -> RetryAction {
+  if stderr.contains("has an unfree license") && stderr.contains("refusing") {
+    RetryAction::AllowUnfree
+  } else if stderr.contains("has been marked as insecure")
+    && stderr.contains("refusing")
+  {
+    RetryAction::AllowInsecure
+  } else if stderr.contains("has been marked as broken")
+    && stderr.contains("refusing")
+  {
+    RetryAction::AllowBroken
+  } else {
+    RetryAction::None
+  }
+}
+
+/// Returns true if stderr looks like a genuine hash mismatch error
+/// (not just any mention of "hash" or "sha256").
+fn is_hash_mismatch_error(stderr: &str) -> bool {
+  stderr.contains("hash mismatch")
+    || (stderr.contains("specified:") && stderr.contains("got:"))
+}
+
+/// Pre-evaluate expression to catch errors early.
+///
+/// Returns a `RetryAction` if the evaluation fails with a retryable error
+/// (unfree/insecure/broken), allowing the caller to retry with the right
+/// environment variables without ever streaming the verbose nix error output.
+fn pre_evaluate(args: &[String]) -> Result<RetryAction> {
   // Find flake references or expressions to evaluate
   // Only take the first non-flag argument (the package/expression)
   let eval_arg = args.iter().find(|arg| !arg.starts_with('-'));
 
   let Some(eval_arg) = eval_arg else {
-    return Ok(true); // No expression to evaluate
+    return Ok(RetryAction::None); // No expression to evaluate
   };
 
-  let eval_cmd = NixCommand::new("eval").arg(eval_arg).arg("--raw");
+  let eval_cmd = NixCommand::new("eval")
+    .arg(eval_arg)
+    .print_build_logs(false);
 
   let output = eval_cmd.output()?;
 
   if output.status.success() {
-    return Ok(true);
+    return Ok(RetryAction::None);
   }
 
   let stderr = String::from_utf8_lossy(&output.stderr);
 
-  // If eval fails due to unfree/insecure/broken, don't fail pre-evaluation
-  // Let the main command handle it with retry logic
-  if stderr.contains("has an unfree license")
-    || stderr.contains("refusing to evaluate")
-    || stderr.contains("has been marked as insecure")
-    || stderr.contains("has been marked as broken")
-  {
-    return Ok(true);
+  // Classify whether this is a retryable error (unfree/insecure/broken)
+  let action = classify_retry_action(&stderr);
+  if action != RetryAction::None {
+    return Ok(action);
   }
 
-  // For other eval failures, fail early
-  Ok(false)
+  // For other eval failures, warn but let the actual command handle the
+  // error with full streaming output rather than halting here.
+  let err = EhError::PreEvalFailed {
+    expression: eval_arg.clone(),
+    stderr:     stderr.trim().to_string(),
+  };
+  eprintln!("  {} {}", "->".yellow().bold(), err,);
+  Ok(RetryAction::None)
 }
 
 pub fn validate_nix_args(args: &[String]) -> Result<()> {
@@ -202,15 +354,28 @@ pub fn handle_nix_with_retry(
   interactive: bool,
 ) -> Result<i32> {
   validate_nix_args(args)?;
-  // Pre-evaluate for build commands to catch errors early
-  if !pre_evaluate(subcommand, args)? {
-    return Err(EhError::NixCommandFailed(
-      "Expression evaluation failed".to_string(),
-    ));
+
+  // Pre-evaluate to detect retryable errors (unfree/insecure/broken) before
+  // running the actual command. This avoids streaming verbose nix error output
+  // only to retry immediately after.
+  let pkg = package_name(args);
+  let pre_eval_action = pre_evaluate(args)?;
+  if let Some((env_var, reason)) = pre_eval_action.env_override() {
+    print_retry_msg(pkg, reason, env_var);
+    let mut retry_cmd = NixCommand::new(subcommand)
+      .print_build_logs(true)
+      .args_ref(args)
+      .env(env_var, "1")
+      .impure(true);
+    if interactive {
+      retry_cmd = retry_cmd.interactive(true);
+    }
+    let retry_status = retry_cmd.run_with_logs(StdIoInterceptor)?;
+    return Ok(retry_status.code().unwrap_or(1));
   }
 
-  // For run commands, try interactive first to avoid breaking terminal
-  if subcommand == "run" && interactive {
+  // For run/shell commands, try interactive mode now that pre-eval passed
+  if interactive {
     let status = NixCommand::new(subcommand)
       .print_build_logs(true)
       .interactive(true)
@@ -221,18 +386,23 @@ pub fn handle_nix_with_retry(
     }
   }
 
-  // First, always capture output to check for errors that need retry
+  // Capture output to check for errors that need retry (hash mismatches etc.)
   let output_cmd = NixCommand::new(subcommand)
     .print_build_logs(true)
     .args_ref(args);
   let output = output_cmd.output()?;
   let stderr = String::from_utf8_lossy(&output.stderr);
 
-  // Check if we need to retry with special flags
+  // Check for hash mismatch errors
   if let Some(new_hash) = hash_extractor.extract_hash(&stderr) {
-    match fixer.fix_hash_in_files(&new_hash) {
+    let old_hash = hash_extractor.extract_old_hash(&stderr);
+    match fixer.fix_hash_in_files(old_hash.as_deref(), &new_hash) {
       Ok(true) => {
-        info!("{}", Paint::green("✔ Fixed hash mismatch, retrying..."));
+        eprintln!(
+          "  {} {}: hash mismatch corrected in local files, rebuilding",
+          "->".green().bold(),
+          pkg.bold(),
+        );
         let mut retry_cmd = NixCommand::new(subcommand)
           .print_build_logs(true)
           .args_ref(args);
@@ -246,72 +416,34 @@ pub fn handle_nix_with_retry(
         // No files were fixed, continue with normal error handling
       },
       Err(EhError::NoNixFilesFound) => {
-        warn!("No .nix files found to fix hash in");
+        eprintln!(
+          "  {} {}: hash mismatch detected but no .nix files found to update",
+          "->".yellow().bold(),
+          pkg.bold(),
+        );
         // Continue with normal error handling
       },
       Err(e) => {
         return Err(e);
       },
     }
-  } else if stderr.contains("hash") || stderr.contains("sha256") {
-    // If there's a hash-related error but we couldn't extract it, that's a
-    // failure
-    return Err(EhError::HashExtractionFailed);
+  } else if is_hash_mismatch_error(&stderr) {
+    // There's a genuine hash mismatch but we couldn't extract the new hash
+    return Err(EhError::HashExtractionFailed {
+      stderr: stderr.to_string(),
+    });
   }
 
+  // Fallback: check for unfree/insecure/broken in captured output
+  // (in case pre_evaluate didn't catch it, e.g. from a dependency)
   if classifier.should_retry(&stderr) {
-    if stderr.contains("has an unfree license") && stderr.contains("refusing") {
-      warn!(
-        "{}",
-        Paint::yellow(
-          "⚠ Unfree package detected, retrying with NIXPKGS_ALLOW_UNFREE=1..."
-        )
-      );
+    let action = classify_retry_action(&stderr);
+    if let Some((env_var, reason)) = action.env_override() {
+      print_retry_msg(pkg, reason, env_var);
       let mut retry_cmd = NixCommand::new(subcommand)
         .print_build_logs(true)
         .args_ref(args)
-        .env("NIXPKGS_ALLOW_UNFREE", "1")
-        .impure(true);
-      if interactive {
-        retry_cmd = retry_cmd.interactive(true);
-      }
-      let retry_status = retry_cmd.run_with_logs(StdIoInterceptor)?;
-      return Ok(retry_status.code().unwrap_or(1));
-    }
-    if stderr.contains("has been marked as insecure")
-      && stderr.contains("refusing")
-    {
-      warn!(
-        "{}",
-        Paint::yellow(
-          "⚠ Insecure package detected, retrying with \
-           NIXPKGS_ALLOW_INSECURE=1..."
-        )
-      );
-      let mut retry_cmd = NixCommand::new(subcommand)
-        .print_build_logs(true)
-        .args_ref(args)
-        .env("NIXPKGS_ALLOW_INSECURE", "1")
-        .impure(true);
-      if interactive {
-        retry_cmd = retry_cmd.interactive(true);
-      }
-      let retry_status = retry_cmd.run_with_logs(StdIoInterceptor)?;
-      return Ok(retry_status.code().unwrap_or(1));
-    }
-    if stderr.contains("has been marked as broken")
-      && stderr.contains("refusing")
-    {
-      warn!(
-        "{}",
-        Paint::yellow(
-          "⚠ Broken package detected, retrying with NIXPKGS_ALLOW_BROKEN=1..."
-        )
-      );
-      let mut retry_cmd = NixCommand::new(subcommand)
-        .print_build_logs(true)
-        .args_ref(args)
-        .env("NIXPKGS_ALLOW_BROKEN", "1")
+        .env(env_var, "1")
         .impure(true);
       if interactive {
         retry_cmd = retry_cmd.interactive(true);
@@ -330,22 +462,23 @@ pub fn handle_nix_with_retry(
   std::io::stderr()
     .write_all(&output.stderr)
     .map_err(EhError::Io)?;
-  Err(EhError::ProcessExit {
-    code: output.status.code().unwrap_or(1),
-  })
+
+  match output.status.code() {
+    Some(code) => Err(EhError::ProcessExit { code }),
+    // No exit code means the process was killed by a signal
+    None => {
+      Err(EhError::NixCommandFailed {
+        command: subcommand.to_string(),
+      })
+    },
+  }
 }
 
 pub struct DefaultNixErrorClassifier;
 
 impl NixErrorClassifier for DefaultNixErrorClassifier {
   fn should_retry(&self, stderr: &str) -> bool {
-    RegexHashExtractor.extract_hash(stderr).is_some()
-      || (stderr.contains("has an unfree license")
-        && stderr.contains("refusing"))
-      || (stderr.contains("has been marked as insecure")
-        && stderr.contains("refusing"))
-      || (stderr.contains("has been marked as broken")
-        && stderr.contains("refusing"))
+    classify_retry_action(stderr) != RetryAction::None
   }
 }
 
@@ -379,7 +512,7 @@ mod tests {
 
     let fixer = DefaultNixFileFixer;
     let result = fixer
-      .fix_hash_in_file(file_path, "sha256-newhash999")
+      .fix_hash_in_file(file_path, None, "sha256-newhash999")
       .unwrap();
 
     assert!(result, "Hash replacement should return true");
@@ -413,7 +546,7 @@ mod tests {
     // Test hash replacement
     let fixer = DefaultNixFileFixer;
     let result = fixer
-      .fix_hash_in_file(&file_path, "sha256-newhash999")
+      .fix_hash_in_file(&file_path, None, "sha256-newhash999")
       .unwrap();
 
     assert!(
@@ -448,7 +581,7 @@ mod tests {
     // Test that streaming can handle large files without memory issues
     let fixer = DefaultNixFileFixer;
     let result = fixer
-      .fix_hash_in_file(file_path, "sha256-newhash999")
+      .fix_hash_in_file(file_path, None, "sha256-newhash999")
       .unwrap();
 
     assert!(result, "Hash replacement should work for large files");
@@ -483,7 +616,9 @@ mod tests {
 
     // Test hash replacement
     let fixer = DefaultNixFileFixer;
-    let result = fixer.fix_hash_in_file(file_path, "sha256-newhash").unwrap();
+    let result = fixer
+      .fix_hash_in_file(file_path, None, "sha256-newhash")
+      .unwrap();
 
     assert!(result, "Hash replacement should succeed");
 
@@ -536,6 +671,235 @@ mod tests {
       result.is_ok(),
       "Should allow safe arguments: {:?}",
       safe_args
+    );
+  }
+
+  #[test]
+  fn test_input_validation_empty_args() {
+    let result = validate_nix_args(&[]);
+    assert!(result.is_ok(), "Empty args should be accepted");
+  }
+
+  #[test]
+  fn test_hash_extraction_got_pattern() {
+    let stderr = "hash mismatch in fixed-output derivation\n  specified: \
+                  sha256-AAAA\n  got:    \
+                  sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+    let extractor = RegexHashExtractor;
+    let hash = extractor.extract_hash(stderr);
+    assert!(hash.is_some());
+    assert!(hash.unwrap().starts_with("sha256-"));
+  }
+
+  #[test]
+  fn test_hash_extraction_actual_pattern() {
+    let stderr = "hash mismatch\n  actual: \
+                  sha256-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=";
+    let extractor = RegexHashExtractor;
+    let hash = extractor.extract_hash(stderr);
+    assert!(hash.is_some());
+    assert!(hash.unwrap().starts_with("sha256-"));
+  }
+
+  #[test]
+  fn test_hash_extraction_have_pattern() {
+    let stderr = "hash mismatch\n  have: \
+                  sha256-DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=";
+    let extractor = RegexHashExtractor;
+    let hash = extractor.extract_hash(stderr);
+    assert!(hash.is_some());
+    assert!(hash.unwrap().starts_with("sha256-"));
+  }
+
+  #[test]
+  fn test_hash_extraction_no_match() {
+    let stderr = "error: some other nix error without hashes";
+    let extractor = RegexHashExtractor;
+    assert!(extractor.extract_hash(stderr).is_none());
+  }
+
+  #[test]
+  fn test_hash_extraction_partial_match() {
+    // Contains "got:" but no sha256 hash
+    let stderr = "got: some-other-value";
+    let extractor = RegexHashExtractor;
+    assert!(extractor.extract_hash(stderr).is_none());
+  }
+
+  #[test]
+  fn test_false_positive_hash_detection() {
+    // Normal nix output mentioning "hash" or "sha256" without being a mismatch
+    let cases = [
+      "evaluating attribute 'sha256' of derivation 'hello'",
+      "building '/nix/store/hash-something.drv'",
+      "copying path '/nix/store/sha256-abcdef-hello'",
+      "this derivation has a hash attribute set",
+    ];
+    for stderr in &cases {
+      assert!(
+        !is_hash_mismatch_error(stderr),
+        "Should not detect hash mismatch in: {stderr}"
+      );
+    }
+  }
+
+  #[test]
+  fn test_genuine_hash_mismatch_detection() {
+    assert!(is_hash_mismatch_error(
+      "hash mismatch in fixed-output derivation"
+    ));
+    assert!(is_hash_mismatch_error(
+      "specified: sha256-AAAA\n  got: sha256-BBBB"
+    ));
+  }
+
+  #[test]
+  fn test_classify_retry_action_unfree() {
+    let stderr =
+      "error: Package 'foo' has an unfree license, refusing to evaluate.";
+    assert_eq!(classify_retry_action(stderr), RetryAction::AllowUnfree);
+  }
+
+  #[test]
+  fn test_classify_retry_action_insecure() {
+    let stderr =
+      "error: Package 'bar' has been marked as insecure, refusing to evaluate.";
+    assert_eq!(classify_retry_action(stderr), RetryAction::AllowInsecure);
+  }
+
+  #[test]
+  fn test_classify_retry_action_broken() {
+    let stderr =
+      "error: Package 'baz' has been marked as broken, refusing to evaluate.";
+    assert_eq!(classify_retry_action(stderr), RetryAction::AllowBroken);
+  }
+
+  #[test]
+  fn test_classify_retry_action_none() {
+    let stderr = "error: attribute 'nonexistent' not found";
+    assert_eq!(classify_retry_action(stderr), RetryAction::None);
+  }
+
+  #[test]
+  fn test_retry_action_env_overrides() {
+    let (var, reason) = RetryAction::AllowUnfree.env_override().unwrap();
+    assert_eq!(var, "NIXPKGS_ALLOW_UNFREE");
+    assert!(reason.contains("unfree"));
+
+    let (var, reason) = RetryAction::AllowInsecure.env_override().unwrap();
+    assert_eq!(var, "NIXPKGS_ALLOW_INSECURE");
+    assert!(reason.contains("insecure"));
+
+    let (var, reason) = RetryAction::AllowBroken.env_override().unwrap();
+    assert_eq!(var, "NIXPKGS_ALLOW_BROKEN");
+    assert!(reason.contains("broken"));
+
+    assert_eq!(RetryAction::None.env_override(), None);
+  }
+
+  #[test]
+  fn test_classifier_should_retry() {
+    let classifier = DefaultNixErrorClassifier;
+    assert!(
+      classifier.should_retry(
+        "Package 'x' has an unfree license, refusing to evaluate"
+      )
+    );
+    assert!(classifier.should_retry(
+      "Package 'x' has been marked as insecure, refusing to evaluate"
+    ));
+    assert!(classifier.should_retry(
+      "Package 'x' has been marked as broken, refusing to evaluate"
+    ));
+    assert!(!classifier.should_retry("error: attribute not found"));
+  }
+
+  #[test]
+  fn test_old_hash_extraction() {
+    let stderr =
+      "hash mismatch in fixed-output derivation\n  specified: \
+       sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n  got:    \
+       sha256-BBBB=";
+    let extractor = RegexHashExtractor;
+    let old = extractor.extract_old_hash(stderr);
+    assert!(old.is_some());
+    assert_eq!(
+      old.unwrap(),
+      "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    );
+  }
+
+  #[test]
+  fn test_old_hash_extraction_missing() {
+    let stderr = "hash mismatch\n  got: sha256-BBBB=";
+    let extractor = RegexHashExtractor;
+    assert!(extractor.extract_old_hash(stderr).is_none());
+  }
+
+  #[test]
+  fn test_targeted_hash_replacement_only_matching() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let file_path = temp_file.path();
+
+    // File with two derivations, each with a different hash
+    let test_content = r#"{ pkgs }:
+{
+  a = pkgs.fetchurl {
+    url = "https://example.com/a.tar.gz";
+    hash = "sha256-AAAA";
+  };
+  b = pkgs.fetchurl {
+    url = "https://example.com/b.tar.gz";
+    hash = "sha256-BBBB";
+  };
+}"#;
+
+    let mut file = std::fs::File::create(file_path).unwrap();
+    file.write_all(test_content.as_bytes()).unwrap();
+    file.flush().unwrap();
+
+    let fixer = DefaultNixFileFixer;
+    // Only replace the hash matching "sha256-AAAA"
+    let result = fixer
+      .fix_hash_in_file(file_path, Some("sha256-AAAA"), "sha256-NEWW")
+      .unwrap();
+
+    assert!(result, "Targeted replacement should return true");
+
+    let updated = std::fs::read_to_string(file_path).unwrap();
+    assert!(
+      updated.contains(r#"hash = "sha256-NEWW""#),
+      "Matching hash should be replaced"
+    );
+    assert!(
+      updated.contains(r#"hash = "sha256-BBBB""#),
+      "Non-matching hash should be untouched"
+    );
+  }
+
+  #[test]
+  fn test_targeted_hash_replacement_no_match() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let file_path = temp_file.path();
+
+    let test_content = r#"{ hash = "sha256-XXXX"; }"#;
+
+    let mut file = std::fs::File::create(file_path).unwrap();
+    file.write_all(test_content.as_bytes()).unwrap();
+    file.flush().unwrap();
+
+    let fixer = DefaultNixFileFixer;
+    // old_hash doesn't match anything in the file
+    let result = fixer
+      .fix_hash_in_file(file_path, Some("sha256-NOMATCH"), "sha256-NEWW")
+      .unwrap();
+
+    assert!(!result, "Should return false when old hash doesn't match");
+
+    let updated = std::fs::read_to_string(file_path).unwrap();
+    assert!(
+      updated.contains("sha256-XXXX"),
+      "Original hash should be untouched"
     );
   }
 }
