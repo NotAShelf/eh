@@ -3,6 +3,7 @@ pub mod command;
 pub mod error;
 pub mod run;
 pub mod shell;
+pub mod update;
 pub mod util;
 
 pub use clap::{CommandFactory, Parser, Subcommand};
@@ -31,6 +32,11 @@ pub enum Command {
   },
   /// Build a Nix derivation
   Build {
+    #[arg(trailing_var_arg = true)]
+    args: Vec<String>,
+  },
+  /// Update flake inputs interactively
+  Update {
     #[arg(trailing_var_arg = true)]
     args: Vec<String>,
   },

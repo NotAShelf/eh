@@ -9,6 +9,7 @@ mod command;
 mod error;
 mod run;
 mod shell;
+mod update;
 mod util;
 
 fn main() {
@@ -17,11 +18,14 @@ fn main() {
   match result {
     Ok(code) => std::process::exit(code),
     Err(e) => {
-      eh_log::log_error!("{e}");
-      if let Some(hint) = e.hint() {
-        eh_log::log_hint!("{hint}");
+      let code = e.exit_code();
+      if code != 0 {
+        eh_log::log_error!("{e}");
+        if let Some(hint) = e.hint() {
+          eh_log::log_hint!("{hint}");
+        }
       }
-      std::process::exit(e.exit_code());
+      std::process::exit(code);
     },
   }
 }
@@ -37,6 +41,7 @@ fn dispatch_multicall(
     "nr" => "run",
     "ns" => "shell",
     "nb" => "build",
+    "nu" => "update",
     _ => return None,
   };
 
@@ -58,6 +63,10 @@ fn dispatch_multicall(
   if rest.iter().any(|a| a == "--version") {
     eprintln!("{} (eh {})", app_name.bold(), env!("CARGO_PKG_VERSION"));
     return Some(Ok(0));
+  }
+
+  if subcommand == "update" {
+    return Some(update::handle_update(&rest));
   }
 
   let hash_extractor = util::RegexHashExtractor;
@@ -109,6 +118,8 @@ fn run_app() -> Result<i32> {
     Some(Command::Build { args }) => {
       build::handle_nix_build(&args, &hash_extractor, &fixer, &classifier)
     },
+
+    Some(Command::Update { args }) => update::handle_update(&args),
 
     None => {
       Cli::command().print_help()?;

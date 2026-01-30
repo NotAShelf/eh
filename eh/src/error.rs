@@ -45,6 +45,15 @@ pub enum EhError {
 
   #[error("invalid input '{input}': {reason}")]
   InvalidInput { input: String, reason: String },
+
+  #[error("failed to parse JSON from nix output: {detail}")]
+  JsonParse { detail: String },
+
+  #[error("no flake inputs found in lock file")]
+  NoFlakeInputs,
+
+  #[error("no inputs selected")]
+  UpdateCancelled,
 }
 
 pub type Result<T> = std::result::Result<T, EhError>;
@@ -65,6 +74,9 @@ impl EhError {
       Self::Utf8(_) => 10,
       Self::Timeout { .. } => 11,
       Self::PreEvalFailed { .. } => 12,
+      Self::JsonParse { .. } => 13,
+      Self::NoFlakeInputs => 14,
+      Self::UpdateCancelled => 0,
     }
   }
 
@@ -92,12 +104,19 @@ impl EhError {
       Self::InvalidInput { .. } => {
         Some("avoid shell metacharacters in nix arguments")
       },
+      Self::JsonParse { .. } => {
+        Some("ensure 'nix flake metadata --json' produces valid output")
+      },
+      Self::NoFlakeInputs => {
+        Some("run this from a directory with a flake.lock that has inputs")
+      },
       Self::Io(_)
       | Self::Regex(_)
       | Self::Utf8(_)
       | Self::HashFixFailed { .. }
       | Self::ProcessExit { .. }
-      | Self::CommandFailed { .. } => None,
+      | Self::CommandFailed { .. }
+      | Self::UpdateCancelled => None,
     }
   }
 }
@@ -156,6 +175,15 @@ mod tests {
       12
     );
     assert_eq!(EhError::ProcessExit { code: 42 }.exit_code(), 42);
+    assert_eq!(
+      EhError::JsonParse {
+        detail: "x".into(),
+      }
+      .exit_code(),
+      13
+    );
+    assert_eq!(EhError::NoFlakeInputs.exit_code(), 14);
+    assert_eq!(EhError::UpdateCancelled.exit_code(), 0);
   }
 
   #[test]
@@ -221,6 +249,14 @@ mod tests {
       .hint()
       .is_some()
     );
+    assert!(
+      EhError::JsonParse {
+        detail: "x".into(),
+      }
+      .hint()
+      .is_some()
+    );
+    assert!(EhError::NoFlakeInputs.hint().is_some());
     // Variants without hints
     assert!(
       EhError::CommandFailed {
@@ -230,5 +266,6 @@ mod tests {
       .is_none()
     );
     assert!(EhError::ProcessExit { code: 1 }.hint().is_none());
+    assert!(EhError::UpdateCancelled.hint().is_none());
   }
 }
