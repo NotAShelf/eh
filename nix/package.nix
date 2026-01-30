@@ -17,8 +17,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
       root = s;
       fileset = fs.unions (map (dir: (s + /${dir})) [
         ".cargo"
+        "crates"
         "eh"
-        "xtask"
         "Cargo.toml"
         "Cargo.lock"
       ]);
@@ -44,21 +44,16 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   postInstall = ''
     # Install required files with the 'dist' task
-    $out/bin/xtask multicall \
+    cargo xtask multicall \
       --bin-dir $out/bin \
       --main-binary $out/bin/eh
 
     # Generate shell completions and install them.
     for shell in bash zsh fish; do
-      $out/bin/xtask completions $shell
+      cargo xtask completions $shell
     done
 
     installShellCompletion completions/*
-
-    # The xtask output has been built as a part of the build phase. If
-    # we don't remove it, it'll be linked in $out/bin alongside the actual
-    # binary and populate $PATH with a dedicated 'xtask' command. Remove.
-    rm -rf $out/bin/xtask
   '';
 
   meta = {
