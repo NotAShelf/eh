@@ -4,6 +4,7 @@ use std::{
   sync::LazyLock,
 };
 
+use eh_log::{log_info, log_warn};
 use regex::Regex;
 use tempfile::NamedTempFile;
 use walkdir::WalkDir;
@@ -92,7 +93,7 @@ impl NixFileFixer for DefaultNixFileFixer {
     let mut fixed = false;
     for file_path in nix_files {
       if self.fix_hash_in_file(&file_path, old_hash, new_hash)? {
-        println!("Updated hash in {}", file_path.display());
+        log_info!("updated hash in {}", file_path.display().bold());
         fixed = true;
       }
     }
@@ -251,12 +252,11 @@ fn package_name(args: &[String]) -> &str {
 /// Print a retry message with consistent formatting.
 /// Format: `  -> <pkg>: <reason>, setting <ENV>=1`
 fn print_retry_msg(pkg: &str, reason: &str, env_var: &str) {
-  eprintln!(
-    "  {} {}: {}, setting {}",
-    "->".yellow().bold(),
+  log_warn!(
+    "{}: {}, setting {}",
     pkg.bold(),
     reason,
-    format!("{env_var}=1").bold(),
+    format!("{env_var}=1").bold()
   );
 }
 
@@ -316,14 +316,17 @@ fn pre_evaluate(args: &[String]) -> Result<RetryAction> {
     return Ok(action);
   }
 
-  // For other eval failures, warn but let the actual command handle the
-  // error with full streaming output rather than halting here.
-  let err = EhError::PreEvalFailed {
+  // Non-retryable eval failure — fail fast with a clear message
+  // rather than running the full command and showing the same error again.
+  let stderr_clean = stderr
+    .trim()
+    .strip_prefix("error:")
+    .unwrap_or(stderr.trim())
+    .trim();
+  Err(EhError::PreEvalFailed {
     expression: eval_arg.clone(),
-    stderr:     stderr.trim().to_string(),
-  };
-  eprintln!("  {} {}", "->".yellow().bold(), err,);
-  Ok(RetryAction::None)
+    stderr:     stderr_clean.to_string(),
+  })
 }
 
 pub fn validate_nix_args(args: &[String]) -> Result<()> {
@@ -398,10 +401,9 @@ pub fn handle_nix_with_retry(
     let old_hash = hash_extractor.extract_old_hash(&stderr);
     match fixer.fix_hash_in_files(old_hash.as_deref(), &new_hash) {
       Ok(true) => {
-        eprintln!(
-          "  {} {}: hash mismatch corrected in local files, rebuilding",
-          "->".green().bold(),
-          pkg.bold(),
+        log_info!(
+          "{}: hash mismatch corrected in local files, rebuilding",
+          pkg.bold()
         );
         let mut retry_cmd = NixCommand::new(subcommand)
           .print_build_logs(true)
@@ -416,10 +418,9 @@ pub fn handle_nix_with_retry(
         // No files were fixed, continue with normal error handling
       },
       Err(EhError::NoNixFilesFound) => {
-        eprintln!(
-          "  {} {}: hash mismatch detected but no .nix files found to update",
-          "->".yellow().bold(),
-          pkg.bold(),
+        log_warn!(
+          "{}: hash mismatch detected but no .nix files found to update",
+          pkg.bold()
         );
         // Continue with normal error handling
       },

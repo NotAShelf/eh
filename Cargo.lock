@@ -81,10 +81,18 @@ name = "eh"
 version = "0.1.3"
 dependencies = [
  "clap",
+ "eh-log",
  "regex",
  "tempfile",
  "thiserror",
  "walkdir",
+ "yansi",
+]
+
+[[package]]
+name = "eh-log"
+version = "0.1.3"
+dependencies = [
  "yansi",
 ]
 

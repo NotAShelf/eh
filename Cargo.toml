@@ -21,7 +21,8 @@ thiserror          = "2.0.17"
 walkdir            = "2.5.0"
 yansi              = "1.0.1"
 
-eh = { path = "./eh" }
+eh     = { path = "./eh" }
+eh-log = { path = "./crates/eh-log" }
 
 [profile.release]
 codegen-units = 1

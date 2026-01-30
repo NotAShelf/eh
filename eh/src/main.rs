@@ -2,6 +2,7 @@ use std::{env, path::Path};
 
 use eh::{Cli, Command, CommandFactory, Parser};
 use error::Result;
+use yansi::Paint;
 
 mod build;
 mod command;
@@ -16,9 +17,9 @@ fn main() {
   match result {
     Ok(code) => std::process::exit(code),
     Err(e) => {
-      eprintln!("Error: {e}");
+      eh_log::log_error!("{e}");
       if let Some(hint) = e.hint() {
-        eprintln!("Hint: {hint}");
+        eh_log::log_hint!("{hint}");
       }
       std::process::exit(e.exit_code());
     },
@@ -41,14 +42,21 @@ fn dispatch_multicall(
 
   // Handle --help/-h/--version before forwarding to nix
   if rest.iter().any(|a| a == "--help" || a == "-h") {
-    eprintln!("{app_name}: shorthand for 'eh {subcommand}'");
-    eprintln!("Usage: {app_name} [args...]");
-    eprintln!("All arguments are forwarded to 'nix {subcommand}'.");
+    eprintln!(
+      "{}: shorthand for '{}'",
+      app_name.bold(),
+      format!("eh {subcommand}").bold()
+    );
+    eprintln!("  {} {app_name} [args...]", "usage:".green().bold());
+    eprintln!(
+      "  All arguments are forwarded to '{}'.",
+      format!("nix {subcommand}").dim()
+    );
     return Some(Ok(0));
   }
 
   if rest.iter().any(|a| a == "--version") {
-    eprintln!("{app_name} (eh {})", env!("CARGO_PKG_VERSION"));
+    eprintln!("{} (eh {})", app_name.bold(), env!("CARGO_PKG_VERSION"));
     return Some(Ok(0));
   }
 

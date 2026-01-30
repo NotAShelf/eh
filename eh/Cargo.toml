@@ -12,6 +12,7 @@ name       = "eh"
 
 [dependencies]
 clap.workspace               = true
+eh-log.workspace             = true
 regex.workspace              = true
 tempfile.workspace           = true
 thiserror.workspace          = true

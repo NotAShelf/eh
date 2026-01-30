@@ -4,46 +4,46 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum EhError {
-  #[error("Nix command 'nix {command}' failed")]
+  #[error("nix {command} failed")]
   NixCommandFailed { command: String },
 
-  #[error("IO error: {0}")]
+  #[error("io: {0}")]
   Io(#[from] std::io::Error),
 
-  #[error("Regex error: {0}")]
+  #[error("regex: {0}")]
   Regex(#[from] regex::Error),
 
-  #[error("UTF-8 conversion error: {0}")]
+  #[error("utf-8 conversion: {0}")]
   Utf8(#[from] std::string::FromUtf8Error),
 
-  #[error("Hash extraction failed: could not parse hash from nix output")]
+  #[error("could not extract hash from nix output")]
   HashExtractionFailed { stderr: String },
 
-  #[error("No Nix files found in the current directory")]
+  #[error("no .nix files found in the current directory")]
   NoNixFilesFound,
 
-  #[error("Failed to fix hash in file: {path}")]
+  #[error("could not update hash in {path}")]
   HashFixFailed { path: String },
 
-  #[error("Process exited with code: {code}")]
+  #[error("process exited with code {code}")]
   ProcessExit { code: i32 },
 
-  #[error("Command execution failed: {command}")]
+  #[error("command '{command}' failed")]
   CommandFailed { command: String },
 
-  #[error("Command '{command}' timed out after {} seconds", duration.as_secs())]
+  #[error("nix {command} timed out after {} seconds", duration.as_secs())]
   Timeout {
     command:  String,
     duration: Duration,
   },
 
-  #[error("Pre-evaluation of '{expression}' failed: {stderr}")]
+  #[error("'{expression}' failed to evaluate: {stderr}")]
   PreEvalFailed {
     expression: String,
     stderr:     String,
   },
 
-  #[error("Invalid input: {input} - {reason}")]
+  #[error("invalid input '{input}': {reason}")]
   InvalidInput { input: String, reason: String },
 }
 
@@ -72,31 +72,25 @@ impl EhError {
   pub fn hint(&self) -> Option<&str> {
     match self {
       Self::NixCommandFailed { .. } => {
-        Some("Run with --show-trace for more details from nix")
+        Some("run with --show-trace for more details")
       },
       Self::PreEvalFailed { .. } => {
-        Some(
-          "Check that the expression exists in the flake and is spelled \
-           correctly",
-        )
+        Some("check that the expression exists and is spelled correctly")
       },
       Self::HashExtractionFailed { .. } => {
-        Some(
-          "The nix output contained a hash mismatch but the hash could not be \
-           parsed",
-        )
+        Some("nix reported a hash mismatch but the hash could not be parsed")
       },
       Self::NoNixFilesFound => {
-        Some("Run this command from a directory containing .nix files")
+        Some("run this command from a directory containing .nix files")
       },
       Self::Timeout { .. } => {
         Some(
-          "The command took too long; try a faster network or a smaller \
+          "the command took too long; try a faster network or a smaller \
            derivation",
         )
       },
       Self::InvalidInput { .. } => {
-        Some("Avoid shell metacharacters in nix arguments")
+        Some("avoid shell metacharacters in nix arguments")
       },
       Self::Io(_)
       | Self::Regex(_)
@@ -170,10 +164,7 @@ mod tests {
       command:  "build".into(),
       duration: Duration::from_secs(300),
     };
-    assert_eq!(
-      err.to_string(),
-      "Command 'build' timed out after 300 seconds"
-    );
+    assert_eq!(err.to_string(), "nix build timed out after 300 seconds");
 
     let err = EhError::PreEvalFailed {
       expression: "nixpkgs#hello".into(),
@@ -185,7 +176,7 @@ mod tests {
     let err = EhError::HashExtractionFailed {
       stderr: "some output".into(),
     };
-    assert!(err.to_string().contains("could not parse hash"));
+    assert!(err.to_string().contains("could not extract hash"));
   }
 
   #[test]
