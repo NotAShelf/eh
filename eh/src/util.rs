@@ -15,6 +15,9 @@ use crate::{
   error::{EhError, Result},
 };
 
+/// Maximum directory depth when searching for .nix files.
+const MAX_DIR_DEPTH: usize = 3;
+
 /// Compiled regex patterns for extracting the actual hash from nix stderr.
 static HASH_EXTRACT_PATTERNS: LazyLock<[Regex; 3]> = LazyLock::new(|| {
   [
@@ -39,11 +42,15 @@ static HASH_FIX_PATTERNS: LazyLock<[Regex; 3]> = LazyLock::new(|| {
   ]
 });
 
+/// Trait for extracting store paths and hashes from nix output.
 pub trait HashExtractor {
+  /// Extract the new store path/hash from nix output.
   fn extract_hash(&self, stderr: &str) -> Option<String>;
+  /// Extract the old store path/hash from nix output (for hash updates).
   fn extract_old_hash(&self, stderr: &str) -> Option<String>;
 }
 
+/// Default implementation of [`HashExtractor`] using regex patterns.
 pub struct RegexHashExtractor;
 
 impl HashExtractor for RegexHashExtractor {
@@ -66,13 +73,19 @@ impl HashExtractor for RegexHashExtractor {
   }
 }
 
+/// Trait for fixing hash mismatches in nix files.
 pub trait NixFileFixer {
+  /// Attempt to fix hash in all nix files found in the current directory.
+  /// Returns `true` if at least one file was fixed.
   fn fix_hash_in_files(
     &self,
     old_hash: Option<&str>,
     new_hash: &str,
   ) -> Result<bool>;
+  /// Find all .nix files in the current directory (respects MAX_DIR_DEPTH).
   fn find_nix_files(&self) -> Result<Vec<PathBuf>>;
+  /// Attempt to fix hash in a single file.
+  /// Returns `true` if the file was modified.
   fn fix_hash_in_file(
     &self,
     file_path: &Path,
@@ -81,6 +94,7 @@ pub trait NixFileFixer {
   ) -> Result<bool>;
 }
 
+/// Default implementation of [`NixFileFixer`] that walks the directory tree.
 pub struct DefaultNixFileFixer;
 
 impl NixFileFixer for DefaultNixFileFixer {
@@ -112,7 +126,7 @@ impl NixFileFixer for DefaultNixFileFixer {
     };
 
     let files: Vec<PathBuf> = WalkDir::new(".")
-      .max_depth(3)
+      .max_depth(MAX_DIR_DEPTH)
       .into_iter()
       .filter_entry(|e| !should_skip(e))
       .filter_map(std::result::Result::ok)
@@ -208,16 +222,25 @@ impl NixFileFixer for DefaultNixFileFixer {
   }
 }
 
+/// Trait for classifying nix errors and determining if a retry with modified
+/// environment is appropriate.
 pub trait NixErrorClassifier {
+  /// Determine if the given stderr output should trigger a retry with modified
+  /// environment variables (e.g., NIXPKGS_ALLOW_UNFREE).
   fn should_retry(&self, stderr: &str) -> bool;
 }
 
 /// Classifies what retry action should be taken based on nix stderr output.
 #[derive(Debug, PartialEq, Eq)]
 pub enum RetryAction {
+  /// Package has an unfree license, retry with NIXPKGS_ALLOW_UNFREE=1
   AllowUnfree,
+  /// Package is marked insecure, retry with
+  /// NIXPKGS_ALLOW_INSECURE_DERIVATIONS=1
   AllowInsecure,
+  /// Package is marked broken, retry with NIXPKGS_ALLOW_BROKEN=1
   AllowBroken,
+  /// No retry needed
   None,
 }
 
