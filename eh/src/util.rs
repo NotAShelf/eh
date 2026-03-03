@@ -290,13 +290,14 @@ fn is_hash_mismatch_error(stderr: &str) -> bool {
 /// Returns the appropriate `RetryAction` if any of these are true. Makes a
 /// single nix eval call to minimize overhead.
 fn check_package_flags(args: &[String]) -> Result<RetryAction> {
-  let eval_arg = args.iter().find(|arg| !arg.starts_with('-'));
+  // Default to "." if no argument provided (like `nix build` without args)
+  let eval_arg = args
+    .iter()
+    .find(|arg| !arg.starts_with('-'))
+    .cloned()
+    .unwrap_or_else(|| ".".to_string());
 
-  let Some(eval_arg) = eval_arg else {
-    return Ok(RetryAction::None);
-  };
-
-  let eval_expr = format!("nixpkgs#{}.meta", eval_arg);
+  let eval_expr = format!("nixpkgs#{eval_arg}.meta");
   let eval_cmd = NixCommand::new("eval")
     .arg("--json")
     .arg(&eval_expr)
@@ -304,15 +305,32 @@ fn check_package_flags(args: &[String]) -> Result<RetryAction> {
 
   let output = match eval_cmd.output() {
     Ok(o) if o.status.success() => o,
-    _ => return Ok(RetryAction::None),
+    Ok(o) => {
+      let stderr = String::from_utf8_lossy(&o.stderr);
+      if stderr.contains("does not provide attribute") {
+        return Ok(RetryAction::None);
+      }
+      log_warn!(
+        "failed to check package flags for '{}': {}",
+        eval_arg,
+        stderr.trim()
+      );
+      return Ok(RetryAction::None);
+    },
+
+    Err(e) => {
+      log_warn!("failed to check package flags for '{}': {}", eval_arg, e);
+      return Ok(RetryAction::None);
+    },
   };
 
-  let meta: serde_json::Value = serde_json::from_slice(&output.stdout)
-    .map_err(|_| {
-      EhError::JsonParse {
-        detail: "failed to parse nix eval --json output".to_string(),
-      }
-    })?;
+  let meta: serde_json::Value = match serde_json::from_slice(&output.stdout) {
+    Ok(v) => v,
+    Err(e) => {
+      log_warn!("failed to parse package metadata for '{}': {}", eval_arg, e);
+      return Ok(RetryAction::None);
+    },
+  };
 
   let flags = [
     ("unfree", RetryAction::AllowUnfree),
@@ -321,7 +339,11 @@ fn check_package_flags(args: &[String]) -> Result<RetryAction> {
   ];
 
   for (key, action) in flags {
-    if meta.get(key).and_then(|v| v.as_bool()).unwrap_or(false) {
+    if meta
+      .get(key)
+      .and_then(serde_json::Value::as_bool)
+      .unwrap_or(false)
+    {
       return Ok(action);
     }
   }
@@ -343,14 +365,19 @@ fn pre_evaluate(args: &[String]) -> Result<RetryAction> {
 
   // Find flake references or expressions to evaluate
   // Only take the first non-flag argument (the package/expression)
-  let eval_arg = args.iter().find(|arg| !arg.starts_with('-'));
+  // Default to "." if no argument provided (like `nix build` without args)
+  let eval_arg = args
+    .iter()
+    .find(|arg| !arg.starts_with('-'))
+    .cloned()
+    .unwrap_or_else(|| {
+      log_warn!("no package specified, defaulting to '.' (current directory)");
+      ".".to_string()
+    });
 
-  let Some(eval_arg) = eval_arg else {
-    return Ok(RetryAction::None); // No expression to evaluate
-  };
-
+  let eval_arg_ref = &eval_arg;
   let eval_cmd = NixCommand::new("eval")
-    .arg(eval_arg)
+    .arg(eval_arg_ref)
     .print_build_logs(false);
 
   let output = eval_cmd.output()?;
