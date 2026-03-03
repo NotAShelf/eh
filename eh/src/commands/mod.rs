@@ -37,6 +37,7 @@ impl LogInterceptor for StdIoInterceptor {
   }
 }
 
+#[derive(Debug)]
 enum PipeEvent {
   Stdout(Vec<u8>),
   Stderr(Vec<u8>),
@@ -329,4 +330,139 @@ pub fn handle_nix_command(
     classifier,
     intercept_env,
   )
+}
+
+#[cfg(test)]
+mod tests {
+  use std::io::{Cursor, Error};
+
+  use super::*;
+
+  #[test]
+  fn test_read_pipe_stdout() {
+    let data = b"hello world";
+    let cursor = Cursor::new(data);
+    let (tx, rx) = mpsc::channel();
+
+    let tx_clone = tx.clone();
+    std::thread::spawn(move || {
+      read_pipe(cursor, tx_clone, false);
+    });
+
+    drop(tx);
+
+    let events: Vec<PipeEvent> = rx.iter().take(10).collect();
+    assert!(!events.is_empty());
+
+    let stdout_events: Vec<_> = events
+      .iter()
+      .filter(|e| matches!(e, PipeEvent::Stdout(_)))
+      .collect();
+    assert!(!stdout_events.is_empty());
+
+    let combined: Vec<u8> = events
+      .iter()
+      .filter_map(|e| {
+        match e {
+          PipeEvent::Stdout(b) => Some(b.clone()),
+          _ => None,
+        }
+      })
+      .flatten()
+      .collect();
+    assert_eq!(combined, data);
+  }
+
+  #[test]
+  fn test_read_pipe_stderr() {
+    let data = b"error output";
+    let cursor = Cursor::new(data);
+    let (tx, rx) = mpsc::channel();
+
+    let tx_clone = tx.clone();
+    std::thread::spawn(move || {
+      read_pipe(cursor, tx_clone, true);
+    });
+
+    drop(tx);
+
+    let events: Vec<PipeEvent> = rx.iter().take(10).collect();
+
+    let stderr_events: Vec<_> = events
+      .iter()
+      .filter(|e| matches!(e, PipeEvent::Stderr(_)))
+      .collect();
+    assert!(!stderr_events.is_empty());
+
+    let combined: Vec<u8> = events
+      .iter()
+      .filter_map(|e| {
+        match e {
+          PipeEvent::Stderr(b) => Some(b.clone()),
+          _ => None,
+        }
+      })
+      .flatten()
+      .collect();
+    assert_eq!(combined, data);
+  }
+
+  #[test]
+  fn test_read_pipe_empty() {
+    let cursor = Cursor::new(b"");
+    let (tx, rx) = mpsc::channel();
+
+    let tx_clone = tx.clone();
+    std::thread::spawn(move || {
+      read_pipe(cursor, tx_clone, false);
+    });
+
+    drop(tx);
+
+    let events: Vec<PipeEvent> = rx.iter().take(10).collect();
+    assert!(events.is_empty());
+  }
+
+  #[test]
+  fn test_read_pipe_error() {
+    struct ErrorReader;
+    impl Read for ErrorReader {
+      fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("test error"))
+      }
+    }
+
+    let reader = ErrorReader;
+    let (tx, rx) = mpsc::channel();
+
+    let tx_clone = tx.clone();
+    std::thread::spawn(move || {
+      read_pipe(reader, tx_clone, false);
+    });
+
+    drop(tx);
+
+    let events: Vec<PipeEvent> = rx.iter().take(10).collect();
+
+    let error_events: Vec<_> = events
+      .iter()
+      .filter(|e| matches!(e, PipeEvent::Error(_)))
+      .collect();
+    assert!(!error_events.is_empty());
+  }
+
+  #[test]
+  fn test_pipe_event_debug() {
+    let stdout_event = PipeEvent::Stdout(b"test".to_vec());
+    let stderr_event = PipeEvent::Stderr(b"error".to_vec());
+    let error_event = PipeEvent::Error(Error::other("test"));
+
+    let debug_stdout = format!("{:?}", stdout_event);
+    let debug_stderr = format!("{:?}", stderr_event);
+    let debug_error = format!("{:?}", error_event);
+
+    assert!(debug_stdout.contains("Stdout"));
+    assert!(debug_stderr.contains("Stderr"));
+    assert!(debug_error.contains("Error"));
+  }
 }
