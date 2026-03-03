@@ -1,7 +1,6 @@
 use std::{env, path::Path};
 
 use eh::{Cli, Command, CommandFactory, Parser};
-use error::Result;
 use yansi::Paint;
 
 mod commands;
@@ -26,11 +25,30 @@ fn main() {
   }
 }
 
-// Design partially taken from Stash
+fn handle_command(command: &str, args: &[String]) -> error::Result<i32> {
+  let hash_extractor = util::RegexHashExtractor;
+  let fixer = util::DefaultNixFileFixer;
+  let classifier = util::DefaultNixErrorClassifier;
+
+  match command {
+    "update" => commands::update::handle_update(args),
+    "run" | "shell" | "build" => {
+      commands::handle_nix_command(
+        command,
+        args,
+        &hash_extractor,
+        &fixer,
+        &classifier,
+      )
+    },
+    _ => unreachable!(),
+  }
+}
+
 fn dispatch_multicall(
   app_name: &str,
   args: std::env::Args,
-) -> Option<Result<i32>> {
+) -> Option<error::Result<i32>> {
   let rest: Vec<String> = args.collect();
 
   let subcommand = match app_name {
@@ -61,31 +79,10 @@ fn dispatch_multicall(
     return Some(Ok(0));
   }
 
-  if subcommand == "update" {
-    return Some(commands::update::handle_update(&rest));
-  }
-
-  let hash_extractor = util::RegexHashExtractor;
-  let fixer = util::DefaultNixFileFixer;
-  let classifier = util::DefaultNixErrorClassifier;
-
-  Some(match subcommand {
-    "run" | "shell" | "build" => {
-      commands::handle_nix_command(
-        subcommand,
-        &rest,
-        &hash_extractor,
-        &fixer,
-        &classifier,
-      )
-    },
-    // subcommand is assigned from the match on app_name above;
-    // only "run"/"shell"/"build" are possible values.
-    _ => unreachable!(),
-  })
+  Some(handle_command(subcommand, &rest))
 }
 
-fn run_app() -> Result<i32> {
+fn run_app() -> error::Result<i32> {
   let mut args = env::args();
   let bin = args.next().unwrap_or_else(|| "eh".to_string());
   let app_name = Path::new(&bin)
@@ -100,42 +97,14 @@ fn run_app() -> Result<i32> {
 
   let cli = Cli::parse();
 
-  let hash_extractor = util::RegexHashExtractor;
-  let fixer = util::DefaultNixFileFixer;
-  let classifier = util::DefaultNixErrorClassifier;
-
   match cli.command {
-    Some(Command::Run { args }) => {
-      commands::handle_nix_command(
-        "run",
-        &args,
-        &hash_extractor,
-        &fixer,
-        &classifier,
-      )
-    },
+    Some(Command::Run { args }) => handle_command("run", &args),
 
-    Some(Command::Shell { args }) => {
-      commands::handle_nix_command(
-        "shell",
-        &args,
-        &hash_extractor,
-        &fixer,
-        &classifier,
-      )
-    },
+    Some(Command::Shell { args }) => handle_command("shell", &args),
 
-    Some(Command::Build { args }) => {
-      commands::handle_nix_command(
-        "build",
-        &args,
-        &hash_extractor,
-        &fixer,
-        &classifier,
-      )
-    },
+    Some(Command::Build { args }) => handle_command("build", &args),
 
-    Some(Command::Update { args }) => commands::update::handle_update(&args),
+    Some(Command::Update { args }) => handle_command("update", &args),
 
     None => {
       Cli::command().print_help()?;
