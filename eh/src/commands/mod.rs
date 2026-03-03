@@ -6,15 +6,26 @@ use std::{
   time::{Duration, Instant},
 };
 
-use crate::error::{EhError, Result};
+use crate::{
+  error::{EhError, Result},
+  util::{
+    HashExtractor,
+    NixErrorClassifier,
+    NixFileFixer,
+    handle_nix_with_retry,
+  },
+};
 
-/// Trait for log interception and output handling.
+pub mod update;
+
+const DEFAULT_BUFFER_SIZE: usize = 4096;
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
+
 pub trait LogInterceptor: Send {
   fn on_stderr(&mut self, chunk: &[u8]);
   fn on_stdout(&mut self, chunk: &[u8]);
 }
 
-/// Default log interceptor that just writes to stdio.
 pub struct StdIoInterceptor;
 
 impl LogInterceptor for StdIoInterceptor {
@@ -26,19 +37,12 @@ impl LogInterceptor for StdIoInterceptor {
   }
 }
 
-/// Default buffer size for reading command output
-const DEFAULT_BUFFER_SIZE: usize = 4096;
-
-/// Default timeout for command execution
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
-
 enum PipeEvent {
   Stdout(Vec<u8>),
   Stderr(Vec<u8>),
   Error(io::Error),
 }
 
-/// Drain a pipe reader, sending chunks through the channel.
 fn read_pipe<R: Read>(
   mut reader: R,
   tx: mpsc::Sender<PipeEvent>,
@@ -66,7 +70,6 @@ fn read_pipe<R: Read>(
   }
 }
 
-/// Builder and executor for Nix commands.
 pub struct NixCommand {
   subcommand:       String,
   args:             Vec<String>,
@@ -126,8 +129,6 @@ impl NixCommand {
     self
   }
 
-  /// Build the underlying `std::process::Command` with all configured
-  /// arguments, environment variables, and flags.
   fn build_command(&self) -> Command {
     let mut cmd = Command::new("nix");
     cmd.arg(&self.subcommand);
@@ -147,10 +148,6 @@ impl NixCommand {
     cmd
   }
 
-  /// Run the command, streaming output to the provided interceptor.
-  ///
-  /// Stdout and stderr are read concurrently using background threads
-  /// so that neither pipe blocks the other.
   pub fn run_with_logs<I: LogInterceptor + 'static>(
     &self,
     mut interceptor: I,
@@ -212,7 +209,6 @@ impl NixCommand {
           return Err(EhError::Io(e));
         },
         Err(mpsc::RecvTimeoutError::Timeout) => {},
-        // All senders dropped — both reader threads finished
         Err(mpsc::RecvTimeoutError::Disconnected) => break,
       }
     }
@@ -224,7 +220,6 @@ impl NixCommand {
     Ok(status)
   }
 
-  /// Run the command and capture all output (with timeout).
   pub fn output(&self) -> Result<Output> {
     let mut cmd = self.build_command();
 
@@ -316,4 +311,22 @@ impl NixCommand {
       stderr: stderr_buf,
     })
   }
+}
+
+pub fn handle_nix_command(
+  command: &str,
+  args: &[String],
+  hash_extractor: &dyn HashExtractor,
+  fixer: &dyn NixFileFixer,
+  classifier: &dyn NixErrorClassifier,
+) -> Result<i32> {
+  let intercept_env = matches!(command, "run" | "shell");
+  handle_nix_with_retry(
+    command,
+    args,
+    hash_extractor,
+    fixer,
+    classifier,
+    intercept_env,
+  )
 }

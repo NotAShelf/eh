@@ -81,7 +81,7 @@ impl EhError {
   }
 
   #[must_use]
-  pub fn hint(&self) -> Option<&str> {
+  pub const fn hint(&self) -> Option<&str> {
     match self {
       Self::NixCommandFailed { .. } => {
         Some("run with --show-trace for more details")
@@ -175,13 +175,7 @@ mod tests {
       12
     );
     assert_eq!(EhError::ProcessExit { code: 42 }.exit_code(), 42);
-    assert_eq!(
-      EhError::JsonParse {
-        detail: "x".into(),
-      }
-      .exit_code(),
-      13
-    );
+    assert_eq!(EhError::JsonParse { detail: "x".into() }.exit_code(), 13);
     assert_eq!(EhError::NoFlakeInputs.exit_code(), 14);
     assert_eq!(EhError::UpdateCancelled.exit_code(), 0);
   }
@@ -249,13 +243,7 @@ mod tests {
       .hint()
       .is_some()
     );
-    assert!(
-      EhError::JsonParse {
-        detail: "x".into(),
-      }
-      .hint()
-      .is_some()
-    );
+    assert!(EhError::JsonParse { detail: "x".into() }.hint().is_some());
     assert!(EhError::NoFlakeInputs.hint().is_some());
     // Variants without hints
     assert!(

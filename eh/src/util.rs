@@ -11,7 +11,7 @@ use walkdir::WalkDir;
 use yansi::Paint;
 
 use crate::{
-  command::{NixCommand, StdIoInterceptor},
+  commands::{NixCommand, StdIoInterceptor},
   error::{EhError, Result},
 };
 
@@ -144,7 +144,7 @@ impl NixFileFixer for DefaultNixFileFixer {
     let mut result_content = content;
 
     if let Some(old) = old_hash {
-      // Targeted replacement: only replace attributes whose value matches the
+      // Only replace attributes whose value matches the
       // old hash. Uses regexes to handle variable whitespace around `=`.
       let old_escaped = regex::escape(old);
       let targeted_patterns = [
@@ -171,7 +171,7 @@ impl NixFileFixer for DefaultNixFileFixer {
         }
       }
     } else {
-      // Fallback: replace all hash attributes (original behavior)
+      // Fallback: replace all hash attributes
       let replacements = [
         format!(r#"hash = "{new_hash}""#),
         format!(r#"sha256 = "{new_hash}""#),
@@ -222,9 +222,11 @@ pub enum RetryAction {
 }
 
 impl RetryAction {
-  /// Returns `(env_var, reason)` for this retry action,
-  /// or `None` if no retry is needed.
-  fn env_override(&self) -> Option<(&str, &str)> {
+  /// # Returns
+  ///
+  /// `(env_var, reason)` for this retry action, or `None` if no retry is
+  /// needed.
+  const fn env_override(&self) -> Option<(&str, &str)> {
     match self {
       Self::AllowUnfree => {
         Some(("NIXPKGS_ALLOW_UNFREE", "has an unfree license"))
@@ -245,8 +247,7 @@ fn package_name(args: &[String]) -> &str {
   args
     .iter()
     .find(|a| !a.starts_with('-'))
-    .map(String::as_str)
-    .unwrap_or("<unknown>")
+    .map_or("<unknown>", String::as_str)
 }
 
 /// Print a retry message with consistent formatting.
@@ -261,6 +262,7 @@ fn print_retry_msg(pkg: &str, reason: &str, env_var: &str) {
 }
 
 /// Classify stderr into a retry action.
+#[must_use]
 pub fn classify_retry_action(stderr: &str) -> RetryAction {
   if stderr.contains("has an unfree license") && stderr.contains("refusing") {
     RetryAction::AllowUnfree
@@ -284,12 +286,52 @@ fn is_hash_mismatch_error(stderr: &str) -> bool {
     || (stderr.contains("specified:") && stderr.contains("got:"))
 }
 
+/// Check if a package has an unfree, insecure, or broken attribute set.
+/// Returns the appropriate `RetryAction` if any of these are true.
+fn check_package_flags(args: &[String]) -> Result<RetryAction> {
+  let eval_arg = args.iter().find(|arg| !arg.starts_with('-'));
+
+  let Some(eval_arg) = eval_arg else {
+    return Ok(RetryAction::None);
+  };
+
+  let flags = [
+    ("unfree", RetryAction::AllowUnfree),
+    ("insecure", RetryAction::AllowInsecure),
+    ("broken", RetryAction::AllowBroken),
+  ];
+
+  for (flag, action) in flags {
+    let eval_expr = format!("nixpkgs#{eval_arg}.meta.{flag}");
+    let eval_cmd = NixCommand::new("eval")
+      .arg(&eval_expr)
+      .print_build_logs(false);
+
+    if let Ok(output) = eval_cmd.output()
+      && output.status.success()
+    {
+      let stdout = String::from_utf8_lossy(&output.stdout);
+      if stdout.trim() == "true" {
+        return Ok(action);
+      }
+    }
+  }
+
+  Ok(RetryAction::None)
+}
+
 /// Pre-evaluate expression to catch errors early.
 ///
-/// Returns a `RetryAction` if the evaluation fails with a retryable error
+/// Returns a `RetryAction` if the package has retryable flags
 /// (unfree/insecure/broken), allowing the caller to retry with the right
-/// environment variables without ever streaming the verbose nix error output.
+/// environment variables.
 fn pre_evaluate(args: &[String]) -> Result<RetryAction> {
+  // First, check package meta flags directly to avoid error message parsing
+  let action = check_package_flags(args)?;
+  if action != RetryAction::None {
+    return Ok(action);
+  }
+
   // Find flake references or expressions to evaluate
   // Only take the first non-flag argument (the package/expression)
   let eval_arg = args.iter().find(|arg| !arg.starts_with('-'));
@@ -311,12 +353,13 @@ fn pre_evaluate(args: &[String]) -> Result<RetryAction> {
   let stderr = String::from_utf8_lossy(&output.stderr);
 
   // Classify whether this is a retryable error (unfree/insecure/broken)
+  // Fallback for errors that slip through (e.g., from dependencies)
   let action = classify_retry_action(&stderr);
   if action != RetryAction::None {
     return Ok(action);
   }
 
-  // Non-retryable eval failure — fail fast with a clear message
+  // Non-retryable eval failure, we should fail fast with a clear message
   // rather than running the full command and showing the same error again.
   let stderr_clean = stderr
     .trim()

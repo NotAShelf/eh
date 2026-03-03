@@ -4,12 +4,8 @@ use eh::{Cli, Command, CommandFactory, Parser};
 use error::Result;
 use yansi::Paint;
 
-mod build;
-mod command;
+mod commands;
 mod error;
-mod run;
-mod shell;
-mod update;
 mod util;
 
 fn main() {
@@ -66,7 +62,7 @@ fn dispatch_multicall(
   }
 
   if subcommand == "update" {
-    return Some(update::handle_update(&rest));
+    return Some(commands::update::handle_update(&rest));
   }
 
   let hash_extractor = util::RegexHashExtractor;
@@ -74,12 +70,14 @@ fn dispatch_multicall(
   let classifier = util::DefaultNixErrorClassifier;
 
   Some(match subcommand {
-    "run" => run::handle_nix_run(&rest, &hash_extractor, &fixer, &classifier),
-    "shell" => {
-      shell::handle_nix_shell(&rest, &hash_extractor, &fixer, &classifier)
-    },
-    "build" => {
-      build::handle_nix_build(&rest, &hash_extractor, &fixer, &classifier)
+    "run" | "shell" | "build" => {
+      commands::handle_nix_command(
+        subcommand,
+        &rest,
+        &hash_extractor,
+        &fixer,
+        &classifier,
+      )
     },
     // subcommand is assigned from the match on app_name above;
     // only "run"/"shell"/"build" are possible values.
@@ -108,18 +106,36 @@ fn run_app() -> Result<i32> {
 
   match cli.command {
     Some(Command::Run { args }) => {
-      run::handle_nix_run(&args, &hash_extractor, &fixer, &classifier)
+      commands::handle_nix_command(
+        "run",
+        &args,
+        &hash_extractor,
+        &fixer,
+        &classifier,
+      )
     },
 
     Some(Command::Shell { args }) => {
-      shell::handle_nix_shell(&args, &hash_extractor, &fixer, &classifier)
+      commands::handle_nix_command(
+        "shell",
+        &args,
+        &hash_extractor,
+        &fixer,
+        &classifier,
+      )
     },
 
     Some(Command::Build { args }) => {
-      build::handle_nix_build(&args, &hash_extractor, &fixer, &classifier)
+      commands::handle_nix_command(
+        "build",
+        &args,
+        &hash_extractor,
+        &fixer,
+        &classifier,
+      )
     },
 
-    Some(Command::Update { args }) => update::handle_update(&args),
+    Some(Command::Update { args }) => commands::update::handle_update(&args),
 
     None => {
       Cli::command().print_help()?;

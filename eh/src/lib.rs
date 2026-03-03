@@ -1,9 +1,5 @@
-pub mod build;
-pub mod command;
+pub mod commands;
 pub mod error;
-pub mod run;
-pub mod shell;
-pub mod update;
 pub mod util;
 
 pub use clap::{CommandFactory, Parser, Subcommand};

@@ -1,14 +1,15 @@
 use crate::{
-  command::{NixCommand, StdIoInterceptor},
+  commands::{NixCommand, StdIoInterceptor},
   error::{EhError, Result},
 };
 
 /// Parse flake input names from `nix flake metadata --json` output.
 pub fn parse_flake_inputs(stdout: &str) -> Result<Vec<String>> {
-  let value: serde_json::Value =
-    serde_json::from_str(stdout).map_err(|e| EhError::JsonParse {
+  let value: serde_json::Value = serde_json::from_str(stdout).map_err(|e| {
+    EhError::JsonParse {
       detail: e.to_string(),
-    })?;
+    }
+  })?;
 
   let inputs = value
     .get("locks")
