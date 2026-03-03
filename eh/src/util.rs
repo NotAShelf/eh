@@ -287,7 +287,8 @@ fn is_hash_mismatch_error(stderr: &str) -> bool {
 }
 
 /// Check if a package has an unfree, insecure, or broken attribute set.
-/// Returns the appropriate `RetryAction` if any of these are true.
+/// Returns the appropriate `RetryAction` if any of these are true. Makes a
+/// single nix eval call to minimize overhead.
 fn check_package_flags(args: &[String]) -> Result<RetryAction> {
   let eval_arg = args.iter().find(|arg| !arg.starts_with('-'));
 
@@ -295,25 +296,33 @@ fn check_package_flags(args: &[String]) -> Result<RetryAction> {
     return Ok(RetryAction::None);
   };
 
+  let eval_expr = format!("nixpkgs#{}.meta", eval_arg);
+  let eval_cmd = NixCommand::new("eval")
+    .arg("--json")
+    .arg(&eval_expr)
+    .print_build_logs(false);
+
+  let output = match eval_cmd.output() {
+    Ok(o) if o.status.success() => o,
+    _ => return Ok(RetryAction::None),
+  };
+
+  let meta: serde_json::Value = serde_json::from_slice(&output.stdout)
+    .map_err(|_| {
+      EhError::JsonParse {
+        detail: "failed to parse nix eval --json output".to_string(),
+      }
+    })?;
+
   let flags = [
     ("unfree", RetryAction::AllowUnfree),
     ("insecure", RetryAction::AllowInsecure),
     ("broken", RetryAction::AllowBroken),
   ];
 
-  for (flag, action) in flags {
-    let eval_expr = format!("nixpkgs#{eval_arg}.meta.{flag}");
-    let eval_cmd = NixCommand::new("eval")
-      .arg(&eval_expr)
-      .print_build_logs(false);
-
-    if let Ok(output) = eval_cmd.output()
-      && output.status.success()
-    {
-      let stdout = String::from_utf8_lossy(&output.stdout);
-      if stdout.trim() == "true" {
-        return Ok(action);
-      }
+  for (key, action) in flags {
+    if meta.get(key).and_then(|v| v.as_bool()).unwrap_or(false) {
+      return Ok(action);
     }
   }
 
