@@ -42,6 +42,7 @@ enum Binary {
   Nr,
   Ns,
   Nb,
+  Nd,
   Nu,
 }
 
@@ -51,6 +52,7 @@ impl Binary {
       Self::Nr => "nr",
       Self::Ns => "ns",
       Self::Nb => "nb",
+      Self::Nd => "nd",
       Self::Nu => "nu",
     }
   }
@@ -92,7 +94,8 @@ fn create_multicall_binaries(
     );
   }
 
-  let multicall_binaries = [Binary::Nr, Binary::Ns, Binary::Nb, Binary::Nu];
+  let multicall_binaries =
+    [Binary::Nr, Binary::Ns, Binary::Nb, Binary::Nd, Binary::Nu];
   let bin_path = Path::new(bin_dir);
 
   for binary in multicall_binaries {
@@ -155,7 +158,7 @@ fn generate_completions(
   println!("completion file generated: {}", completion_file.display());
 
   // Create symlinks for multicall binaries
-  let multicall_names = ["nb", "nr", "ns", "nu"];
+  let multicall_names = ["nb", "nd", "nr", "ns", "nu"];
   for name in &multicall_names {
     let symlink_path = output_dir.join(format!("{name}.{shell}"));
     if symlink_path.exists() {
