@@ -17,8 +17,10 @@ clap          = { default-features = false, features = [ "std", "help", "derive"
 clap_complete = "4.6.0"
 dialoguer     = { default-features = false, version = "0.12.0" }
 regex         = "1.12.3"
+serde         = { features = [ "derive" ], version = "1.0.149" }
 serde_json    = "1.0.149"
 tempfile      = "3.27.0"
+textwrap      = "0.16.2"
 thiserror     = "2.0.18"
 walkdir       = "2.5.0"
 yansi         = "1.0.1"

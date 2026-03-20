@@ -16,6 +16,7 @@ use crate::{
   },
 };
 
+pub mod info;
 pub mod update;
 
 const DEFAULT_BUFFER_SIZE: usize = 4096;

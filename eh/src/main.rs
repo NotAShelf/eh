@@ -31,6 +31,8 @@ fn handle_command(command: &str, args: &[String]) -> error::Result<i32> {
   let classifier = util::DefaultNixErrorClassifier;
 
   match command {
+    "info" => commands::info::handle_info(args),
+
     "update" => commands::update::handle_update(args),
     "run" | "shell" | "build" | "develop" => {
       commands::handle_nix_command(
@@ -56,6 +58,7 @@ fn dispatch_multicall(
     "ns" => "shell",
     "nb" => "build",
     "nd" => "develop",
+    "ni" => "info",
     "nu" => "update",
     _ => return None,
   };
@@ -106,6 +109,8 @@ fn run_app() -> error::Result<i32> {
     Some(Command::Build { args }) => handle_command("build", &args),
 
     Some(Command::Develop { args }) => handle_command("develop", &args),
+
+    Some(Command::Info { args }) => handle_command("info", &args),
 
     Some(Command::Update { args }) => handle_command("update", &args),
 

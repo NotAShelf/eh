@@ -1,5 +1,5 @@
 use std::{
-  io::{BufWriter, Write},
+  io::{BufWriter, IsTerminal, Write},
   path::{Path, PathBuf},
   sync::LazyLock,
 };
@@ -41,6 +41,13 @@ static HASH_FIX_PATTERNS: LazyLock<[Regex; 3]> = LazyLock::new(|| {
     Regex::new(r#"outputHash\s*=\s*"[^"]*""#).unwrap(),
   ]
 });
+
+/// Regex to extract suggestions from Nix's "Did you mean" error line.
+/// Matches patterns like:
+/// - "Did you mean one of hello, world, or foo?"
+/// - "Did you mean lib.hello?"
+static DID_YOU_MEAN_PATTERN: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r#"Did you mean (?:one of )?(.+?)\?"#).unwrap());
 
 /// Trait for extracting store paths and hashes from nix output.
 pub trait HashExtractor {
@@ -311,9 +318,20 @@ fn is_hash_mismatch_error(stderr: &str) -> bool {
 
 /// Construct the eval expression for a given argument.
 /// Handles both plain package names and flake references.
-fn make_eval_expr(eval_arg: &str) -> String {
+pub fn make_eval_expr(eval_arg: &str) -> String {
+  // Handle . (current directory) as .# (default package of current flake)
+  // Nix treats `nix build .` and `nix build .#` as equivalent
+  let eval_arg = if eval_arg == "." { ".#" } else { eval_arg };
+
   if eval_arg.contains('#') {
-    format!("{eval_arg}.meta")
+    // Handle .# (current flake default package) case
+    // .# needs to become .#default for meta evaluation to work
+    // because .#.meta evaluates 'meta' on the flake itself, not the package
+    if eval_arg.ends_with('#') {
+      format!("{eval_arg}default.meta")
+    } else {
+      format!("{eval_arg}.meta")
+    }
   } else {
     format!("nixpkgs#{eval_arg}.meta")
   }
@@ -512,18 +530,26 @@ pub fn handle_nix_with_retry(
   if let Some(new_hash) = hash_extractor.extract_hash(&stderr) {
     let old_hash = hash_extractor.extract_old_hash(&stderr);
 
-    // Ask for confirmation before fixing hash
-    let should_fix = dialoguer::Confirm::new()
-      .with_prompt(format!(
-        "Hash mismatch detected for {}. Update hash in local .nix files?",
+    // Ask for confirmation before fixing hash (skip in non-interactive mode)
+    let should_fix = if std::io::stdin().is_terminal() {
+      dialoguer::Confirm::new()
+        .with_prompt(format!(
+          "Hash mismatch detected for {}. Update hash in local .nix files?",
+          pkg.bold()
+        ))
+        .default(true)
+        .interact()
+        .map_err(|e| EhError::Io(std::io::Error::other(e)))?
+    } else {
+      log_warn!(
+        "{}: hash mismatch detected in non-interactive mode, skipping auto-fix",
         pkg.bold()
-      ))
-      .default(true)
-      .interact()
-      .map_err(|e| EhError::Io(std::io::Error::other(e)))?;
+      );
+      false
+    };
 
     if !should_fix {
-      log_warn!("{}: hash fix cancelled by user", pkg.bold());
+      log_warn!("{}: hash fix cancelled", pkg.bold());
       return Err(EhError::ProcessExit { code: 1 });
     }
 
@@ -592,6 +618,9 @@ pub fn handle_nix_with_retry(
     .write_all(&output.stderr)
     .map_err(EhError::Io)?;
 
+  // Print contextual suggestions for common errors
+  print_error_suggestions(&output.stderr);
+
   match output.status.code() {
     Some(code) => Err(EhError::ProcessExit { code }),
     // No exit code means the process was killed by a signal
@@ -608,6 +637,46 @@ pub struct DefaultNixErrorClassifier;
 impl NixErrorClassifier for DefaultNixErrorClassifier {
   fn should_retry(&self, stderr: &str) -> bool {
     classify_retry_action(stderr) != RetryAction::None
+  }
+}
+
+/// Parse suggestions from Nix's "Did you mean" error line.
+/// Input: "Did you mean one of neovim, hevi, navi, neo or neo4j?"
+/// Output: vec!["neovim", "hevi", "navi", "neo", "neo4j"]
+fn parse_nix_suggestions(did_you_mean_line: &str) -> Vec<String> {
+  DID_YOU_MEAN_PATTERN
+    .captures(did_you_mean_line)
+    .and_then(|caps| caps.get(1))
+    .map(|m| m.as_str())
+    .map(|suggestions| {
+      suggestions
+        .split(", ")
+        .flat_map(|part| part.split(" or "))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+    })
+    .unwrap_or_default()
+}
+
+/// Print contextual error suggestions when a command fails.
+/// Parses Nix's own "Did you mean" suggestions from stderr and presents them
+/// nicely to the user.
+pub fn print_error_suggestions(stderr: &[u8]) {
+  let stderr_str = String::from_utf8_lossy(stderr);
+
+  // Look for Nix's "Did you mean" line in the error output
+  if let Some(line) = stderr_str.lines().find(|l| l.contains("Did you mean")) {
+    let suggestions = parse_nix_suggestions(line);
+
+    if !suggestions.is_empty() {
+      let formatted = suggestions
+        .iter()
+        .map(|s| s.bold().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+      log_info!("Did you mean: {}?", formatted);
+    }
   }
 }
 
