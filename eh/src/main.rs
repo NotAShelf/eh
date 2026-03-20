@@ -32,7 +32,7 @@ fn handle_command(command: &str, args: &[String]) -> error::Result<i32> {
 
   match command {
     "update" => commands::update::handle_update(args),
-    "run" | "shell" | "build" => {
+    "run" | "shell" | "build" | "develop" => {
       commands::handle_nix_command(
         command,
         args,
@@ -55,6 +55,7 @@ fn dispatch_multicall(
     "nr" => "run",
     "ns" => "shell",
     "nb" => "build",
+    "nd" => "develop",
     "nu" => "update",
     _ => return None,
   };
@@ -103,6 +104,8 @@ fn run_app() -> error::Result<i32> {
     Some(Command::Shell { args }) => handle_command("shell", &args),
 
     Some(Command::Build { args }) => handle_command("build", &args),
+
+    Some(Command::Develop { args }) => handle_command("develop", &args),
 
     Some(Command::Update { args }) => handle_command("update", &args),
 

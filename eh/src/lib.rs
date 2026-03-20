@@ -31,6 +31,11 @@ pub enum Command {
     #[arg(trailing_var_arg = true)]
     args: Vec<String>,
   },
+  /// Enter a Nix development shell
+  Develop {
+    #[arg(trailing_var_arg = true)]
+    args: Vec<String>,
+  },
   /// Update flake inputs interactively
   Update {
     #[arg(trailing_var_arg = true)]

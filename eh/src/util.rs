@@ -511,6 +511,22 @@ pub fn handle_nix_with_retry(
   // Check for hash mismatch errors
   if let Some(new_hash) = hash_extractor.extract_hash(&stderr) {
     let old_hash = hash_extractor.extract_old_hash(&stderr);
+
+    // Ask for confirmation before fixing hash
+    let should_fix = dialoguer::Confirm::new()
+      .with_prompt(format!(
+        "Hash mismatch detected for {}. Update hash in local .nix files?",
+        pkg.bold()
+      ))
+      .default(true)
+      .interact()
+      .map_err(|e| EhError::Io(std::io::Error::other(e)))?;
+
+    if !should_fix {
+      log_warn!("{}: hash fix cancelled by user", pkg.bold());
+      return Err(EhError::ProcessExit { code: 1 });
+    }
+
     match fixer.fix_hash_in_files(old_hash.as_deref(), &new_hash) {
       Ok(true) => {
         log_info!(
