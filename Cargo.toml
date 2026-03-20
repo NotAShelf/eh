@@ -10,15 +10,15 @@ edition      = "2024"
 license      = "MPL-2.0"
 readme       = true
 rust-version = "1.91.0"
-version      = "0.1.6"
+version      = "0.1.7"
 
 [workspace.dependencies]
-clap          = { default-features = false, features = [ "std", "help", "derive" ], version = "4.5.56" }
-clap_complete = "4.5.65"
+clap          = { default-features = false, features = [ "std", "help", "derive" ], version = "4.6.0" }
+clap_complete = "4.6.0"
 dialoguer     = { default-features = false, version = "0.12.0" }
-regex         = "1.12.2"
+regex         = "1.12.3"
 serde_json    = "1.0.149"
-tempfile      = "3.24.0"
+tempfile      = "3.27.0"
 thiserror     = "2.0.18"
 walkdir       = "2.5.0"
 yansi         = "1.0.1"
