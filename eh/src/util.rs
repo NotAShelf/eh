@@ -309,6 +309,16 @@ fn is_hash_mismatch_error(stderr: &str) -> bool {
     || (stderr.contains("specified:") && stderr.contains("got:"))
 }
 
+/// Construct the eval expression for a given argument.
+/// Handles both plain package names and flake references.
+fn make_eval_expr(eval_arg: &str) -> String {
+  if eval_arg.contains('#') {
+    format!("{eval_arg}.meta")
+  } else {
+    format!("nixpkgs#{eval_arg}.meta")
+  }
+}
+
 /// Check if a package has an unfree, insecure, or broken attribute set.
 /// Returns the appropriate `RetryAction` if any of these are true. Makes a
 /// single nix eval call to minimize overhead.
@@ -320,7 +330,7 @@ fn check_package_flags(args: &[String]) -> Result<RetryAction> {
     .cloned()
     .unwrap_or_else(|| ".".to_string());
 
-  let eval_expr = format!("nixpkgs#{eval_arg}.meta");
+  let eval_expr = make_eval_expr(&eval_arg);
   let eval_cmd = NixCommand::new("eval")
     .arg("--json")
     .arg(&eval_expr)
@@ -1003,6 +1013,61 @@ mod tests {
     assert!(
       updated.contains("sha256-XXXX"),
       "Original hash should be untouched"
+    );
+  }
+
+  #[test]
+  fn test_eval_expr_plain_package_name() {
+    assert_eq!(
+      make_eval_expr("vscode"),
+      "nixpkgs#vscode.meta",
+      "Plain package names should be prefixed with nixpkgs#"
+    );
+  }
+
+  #[test]
+  fn test_eval_expr_nixpkgs_prefixed() {
+    assert_eq!(
+      make_eval_expr("nixpkgs#vscode"),
+      "nixpkgs#vscode.meta",
+      "nixpkgs# prefix should not be duplicated"
+    );
+  }
+
+  #[test]
+  fn test_eval_expr_custom_flake() {
+    assert_eq!(
+      make_eval_expr("myflake#vscode"),
+      "myflake#vscode.meta",
+      "Custom flake references should be preserved"
+    );
+  }
+
+  #[test]
+  fn test_eval_expr_github_flake() {
+    assert_eq!(
+      make_eval_expr("github:owner/repo#vscode"),
+      "github:owner/repo#vscode.meta",
+      "GitHub flake references should be preserved"
+    );
+  }
+
+  #[test]
+  fn test_eval_expr_path_flake() {
+    assert_eq!(
+      make_eval_expr("./myflake#vscode"),
+      "./myflake#vscode.meta",
+      "Path-based flake references should be preserved"
+    );
+  }
+
+  #[test]
+  fn test_eval_expr_special_nixpkg_forms() {
+    // Test various nixpkgs forms that might be used
+    assert_eq!(
+      make_eval_expr("nixpkgs#legacyPackages.x86_64-linux.vscode"),
+      "nixpkgs#legacyPackages.x86_64-linux.vscode.meta",
+      "Complex nixpkgs references should be preserved"
     );
   }
 }
