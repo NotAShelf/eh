@@ -4,6 +4,7 @@ use eh::{Cli, Command, CommandFactory, Parser};
 use yansi::Paint;
 
 mod commands;
+mod config;
 mod error;
 mod util;
 
@@ -29,11 +30,13 @@ fn handle_command(command: &str, args: &[String]) -> error::Result<i32> {
   let hash_extractor = util::RegexHashExtractor;
   let fixer = util::DefaultNixFileFixer;
   let classifier = util::DefaultNixErrorClassifier;
+  let cfg = config::load();
+  let cmd_cfg = cfg.for_command(command);
 
   match command {
-    "info" => commands::info::handle_info(args),
+    "info" => commands::info::handle_info(args, &cmd_cfg),
 
-    "update" => commands::update::handle_update(args),
+    "update" => commands::update::handle_update(args, &cmd_cfg),
     "run" | "shell" | "build" | "develop" => {
       commands::handle_nix_command(
         command,
@@ -41,6 +44,7 @@ fn handle_command(command: &str, args: &[String]) -> error::Result<i32> {
         &hash_extractor,
         &fixer,
         &classifier,
+        &cmd_cfg,
       )
     },
     _ => unreachable!(),
