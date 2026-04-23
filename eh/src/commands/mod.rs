@@ -131,6 +131,21 @@ impl NixCommand {
     self
   }
 
+  /// Apply per-command configuration: sets `--impure` (when explicitly enabled)
+  /// and any extra environment variables declared in the config file.  Call
+  /// this before any retry-specific overrides so that retry logic can still
+  /// force `impure(true)` afterwards.
+  #[must_use]
+  pub fn with_config(mut self, cfg: &crate::config::CommandConfig) -> Self {
+    if cfg.impure == Some(true) {
+      self = self.impure(true);
+    }
+    for (k, v) in &cfg.env {
+      self = self.env(k, v);
+    }
+    self
+  }
+
   fn build_command(&self) -> Command {
     let mut cmd = Command::new("nix");
     cmd.arg(&self.subcommand);
@@ -321,6 +336,7 @@ pub fn handle_nix_command(
   hash_extractor: &dyn HashExtractor,
   fixer: &dyn NixFileFixer,
   classifier: &dyn NixErrorClassifier,
+  cfg: &crate::config::CommandConfig,
 ) -> Result<i32> {
   let intercept_env = matches!(command, "run" | "shell");
   handle_nix_with_retry(
@@ -330,6 +346,7 @@ pub fn handle_nix_command(
     fixer,
     classifier,
     intercept_env,
+    cfg,
   )
 }
 

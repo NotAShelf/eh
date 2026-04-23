@@ -55,7 +55,10 @@ fn prompt_input_selection(inputs: &[String]) -> Result<Vec<String>> {
 ///
 /// If `args` is non-empty, use them as explicit input names.
 /// Otherwise, fetch inputs interactively and prompt for selection.
-pub fn handle_update(args: &[String]) -> Result<i32> {
+pub fn handle_update(
+  args: &[String],
+  cfg: &crate::config::CommandConfig,
+) -> Result<i32> {
   let selected = if args.is_empty() {
     let inputs = fetch_flake_inputs()?;
     if inputs.is_empty() {
@@ -66,7 +69,7 @@ pub fn handle_update(args: &[String]) -> Result<i32> {
     args.to_vec()
   };
 
-  let mut cmd = NixCommand::new("flake").arg("lock");
+  let mut cmd = NixCommand::new("flake").arg("lock").with_config(cfg);
   for name in &selected {
     cmd = cmd.arg("--update-input").arg(name);
   }

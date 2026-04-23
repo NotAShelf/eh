@@ -31,7 +31,10 @@ struct PackageOutputs {
   outputs: HashMap<String, serde_json::Value>,
 }
 
-pub fn handle_info(args: &[String]) -> Result<i32> {
+pub fn handle_info(
+  args: &[String],
+  cfg: &crate::config::CommandConfig,
+) -> Result<i32> {
   // Get the package argument (skip flags)
   let pkg = args
     .iter()
@@ -63,7 +66,8 @@ pub fn handle_info(args: &[String]) -> Result<i32> {
   let meta_cmd = NixCommand::new("eval")
     .arg("--json")
     .arg(&eval_arg)
-    .print_build_logs(false);
+    .print_build_logs(false)
+    .with_config(cfg);
 
   let meta_output = meta_cmd.output()?;
 
@@ -91,7 +95,8 @@ pub fn handle_info(args: &[String]) -> Result<i32> {
   let outputs_cmd = NixCommand::new("eval")
     .arg("--json")
     .arg(format!("{}.outputs", outputs_expr))
-    .print_build_logs(false);
+    .print_build_logs(false)
+    .with_config(cfg);
 
   let outputs_output = outputs_cmd.output()?;
   let outputs: Option<PackageOutputs> = if outputs_output.status.success() {

@@ -54,6 +54,11 @@ pub enum EhError {
 
   #[error("no inputs selected")]
   UpdateCancelled,
+
+  #[error(
+    "package {reason} but `--impure` is disabled for `{command}` in config"
+  )]
+  ImpureRequired { command: String, reason: String },
 }
 
 pub type Result<T> = std::result::Result<T, EhError>;
@@ -77,6 +82,7 @@ impl EhError {
       Self::JsonParse { .. } => 13,
       Self::NoFlakeInputs => 14,
       Self::UpdateCancelled => 0,
+      Self::ImpureRequired { .. } => 15,
     }
   }
 
@@ -109,6 +115,12 @@ impl EhError {
       },
       Self::NoFlakeInputs => {
         Some("run this from a directory with a flake.lock that has inputs")
+      },
+      Self::ImpureRequired { .. } => {
+        Some(
+          "set `impure = true` for this command (or globally) in .eh.toml or \
+           ~/.config/eh/config.toml, or pass `--impure` manually",
+        )
       },
       Self::Io(_)
       | Self::Regex(_)

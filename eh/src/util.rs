@@ -485,6 +485,7 @@ pub fn handle_nix_with_retry(
   fixer: &dyn NixFileFixer,
   classifier: &dyn NixErrorClassifier,
   interactive: bool,
+  cfg: &crate::config::CommandConfig,
 ) -> Result<i32> {
   validate_nix_args(args)?;
 
@@ -494,10 +495,17 @@ pub fn handle_nix_with_retry(
   let pkg = package_name(args);
   let pre_eval_action = pre_evaluate(args)?;
   if let Some((env_var, reason)) = pre_eval_action.env_override() {
+    if cfg.impure == Some(false) {
+      return Err(EhError::ImpureRequired {
+        command: subcommand.to_string(),
+        reason:  reason.to_string(),
+      });
+    }
     print_retry_msg(pkg, reason, env_var);
     let mut retry_cmd = NixCommand::new(subcommand)
       .print_build_logs(true)
       .args_ref(args)
+      .with_config(cfg)
       .env(env_var, "1")
       .impure(true);
     if interactive {
@@ -513,6 +521,7 @@ pub fn handle_nix_with_retry(
       .print_build_logs(true)
       .interactive(true)
       .args_ref(args)
+      .with_config(cfg)
       .run_with_logs(StdIoInterceptor)?;
     if status.success() {
       return Ok(0);
@@ -522,7 +531,8 @@ pub fn handle_nix_with_retry(
   // Capture output to check for errors that need retry (hash mismatches etc.)
   let output_cmd = NixCommand::new(subcommand)
     .print_build_logs(true)
-    .args_ref(args);
+    .args_ref(args)
+    .with_config(cfg);
   let output = output_cmd.output()?;
   let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -561,7 +571,8 @@ pub fn handle_nix_with_retry(
         );
         let mut retry_cmd = NixCommand::new(subcommand)
           .print_build_logs(true)
-          .args_ref(args);
+          .args_ref(args)
+          .with_config(cfg);
         if interactive {
           retry_cmd = retry_cmd.interactive(true);
         }
@@ -594,10 +605,17 @@ pub fn handle_nix_with_retry(
   if classifier.should_retry(&stderr) {
     let action = classify_retry_action(&stderr);
     if let Some((env_var, reason)) = action.env_override() {
+      if cfg.impure == Some(false) {
+        return Err(EhError::ImpureRequired {
+          command: subcommand.to_string(),
+          reason:  reason.to_string(),
+        });
+      }
       print_retry_msg(pkg, reason, env_var);
       let mut retry_cmd = NixCommand::new(subcommand)
         .print_build_logs(true)
         .args_ref(args)
+        .with_config(cfg)
         .env(env_var, "1")
         .impure(true);
       if interactive {
