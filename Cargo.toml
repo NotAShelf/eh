@@ -9,8 +9,8 @@ description  = "Ergonomic Nix CLI helper"
 edition      = "2024"
 license      = "MPL-2.0"
 readme       = true
-rust-version = "1.91.0"
-version      = "0.1.7"
+rust-version = "1.94.0"
+version      = "0.2.0"
 
 [workspace.dependencies]
 clap          = { default-features = false, features = [ "std", "help", "derive" ], version = "4.6.0" }
