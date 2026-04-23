@@ -27,6 +27,10 @@ of building the package. The following variables are supported:
 - **Insecure packages**: Sets `NIXPKGS_ALLOW_INSECURE=1`
 - **Broken packages**: Sets `NIXPKGS_ALLOW_BROKEN=1`
 
+Auto-retry requires that `--impure` is not explicitly disabled for the relevant
+command in the config file. By default retries are automatic. See
+[Configuration](#configuration).
+
 ### Hash Auto-Fix
 
 When a hash mismatch is detected in the underlying `nix build`, `eh` can
@@ -53,6 +57,92 @@ ns nixpkgs#hello           # equivalent to: nix shell nixpkgs#hello
 nr nixpkgs#cowsay "Hello!" # nix run nixpkgs#cowsay
 nb .#myPackage             # nix build .#myPackage
 nu                         # nix flake update
+```
+
+## Configuration
+
+`eh` reads configuration from the first `.eh.toml` found by walking up from the
+current directory, falling back to `~/.config/eh/config.toml`. If no file
+exists, all defaults apply and no extra flags are passed to Nix.
+
+### Global settings
+
+Top-level keys apply to every command unless overridden per-command:
+
+```toml
+# Explicitly enable --impure for all commands (also passes it on initial run).
+impure = true
+
+# Explicitly disable impure retries for all commands.
+impure = false
+```
+
+When `impure` is absent (the default), auto-retry with `--impure` is
+**automatic** — `eh` will add `--impure` and the appropriate `NIXPKGS_ALLOW_*`
+variable whenever it detects an unfree, insecure, or broken package.
+
+<!--markdownlint-disable MD013-->
+
+| Key      | Type | Default | Description                                                    |
+| -------- | ---- | ------- | -------------------------------------------------------------- |
+| `impure` | bool | -       | `true` passes `--impure` always; `false` blocks impure retries |
+
+<!--markdownlint-enable MD013-->
+
+### Per-command settings
+
+Each command can be configured independently under `[commands.<name>]`. A
+per-command setting takes precedence over the global one; the global setting
+applies to commands that do not have their own entry.
+
+```toml
+[commands.build]
+impure = true
+env = { NIXPKGS_ALLOW_UNFREE = "1" }
+
+[commands.develop]
+impure = false
+
+[commands.develop.env]
+MY_DEV_VAR = "1"
+```
+
+<!--markdownlint-disable MD013-->
+
+| Key      | Type  | Default | Description                                                                     |
+| -------- | ----- | ------- | ------------------------------------------------------------------------------- |
+| `impure` | bool  | -       | `true` passes `--impure` always; `false` blocks impure retries for this command |
+| `env`    | table | `{}`    | Extra environment variables to set for the command                              |
+
+<!--markdownlint-enable MD013-->
+
+### Impure mode and unfree/insecure/broken packages
+
+When `eh` detects that a package requires `--impure` (unfree, insecure, or
+broken), it retries automatically with the appropriate `NIXPKGS_ALLOW_*`
+variable and `--impure` by default.
+
+If `impure = false` is set for the active command (or globally), the retry is
+blocked and an error is shown instead:
+
+```plaintext
+! package has an unfree license but `--impure` is disabled for `build` in config
+~ set `impure = true` for this command (or globally) in .eh.toml or
+  ~/.config/eh/config.toml, or pass `--impure` manually
+```
+
+To explicitly enable `--impure` for a specific command (also adds it to the
+initial run, not just retries):
+
+```toml
+[commands.build]
+impure = true
+```
+
+To disable impure retries globally:
+
+```toml
+impure = false
 ```
 
 ## License
