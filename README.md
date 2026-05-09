@@ -37,15 +37,31 @@ When a hash mismatch is detected in the underlying `nix build`, `eh` can
 automatically update the old, broken hash with a new and correct one _directly
 in the source file_.
 
+### Interactive `--ask` Flag
+
+Pass `-a` / `--ask` to any command (`run`, `shell`, `build`, `develop`) to
+enable interactive confirmation prompts. Before retrying with `--impure` or
+auto-fixing a hash mismatch, `eh` will ask for confirmation:
+
+```bash
+eh build nixpkgs#steam --ask
+# ? Package 'steam' has an unfree license. Retry with --impure? (Y/n)
+# ? Hash mismatch detected in pkgs/hello/default.nix. Fix it? (Y/n)
+```
+
+In non-interactive mode (no TTY), `--ask` raises an error rather than silently
+skipping. Without `--ask`, prompts only appear in TTY mode.
+
 ## Shell Aliases
 
 By default, you may run the `eh` binary akin to Nix with a nicer interface. The
 supported Nix commands, i.e., nix `build`, `shell`, `run` and `develop` become
 `eh build`, `eh shell`, `eh run` and `eh develop`. However, it is possible to
-symlink the `eh` binary to `nb`, `ns`, `nr`, and `nd` to invoke a specific
-feature. For example, `nb` will act as `eh build` and `nr` will be `eh run`.
+symlink the `eh` binary to `nb`, `ns`, `nr`, `nd`, `dev`, `ni`, and `nu` to
+invoke a specific feature. For example, `nb` will act as `eh build`, `nr` will
+be `eh run`, and `dev` is an alias for `nd`.
 
-One special example is `eh update`, which is aliases to `nu`, that handles
+One special example is `eh update`, which is aliased to `nu`, that handles
 interactive Nix flake updates. It is special in the sense that the usage is
 entirely different from its Nix counterpart, where you get to _interactively_
 pick which inputs to update.
@@ -56,8 +72,33 @@ After enabling shell aliases via the NixOS module or Home Manager, you can use:
 ns nixpkgs#hello           # equivalent to: nix shell nixpkgs#hello
 nr nixpkgs#cowsay "Hello!" # nix run nixpkgs#cowsay
 nb .#myPackage             # nix build .#myPackage
+nd .#myPackage             # nix develop .#myPackage
+dev .#myPackage            # nix develop .#myPackage (alias for nd)
+ni nixpkgs#hello           # nix eval nixpkgs#hello.meta
 nu                         # nix flake update
 ```
+
+### Shell Completions
+
+Generate completions for bash, zsh, or fish:
+
+```bash
+eh completion bash
+eh completion zsh
+eh completion fish
+```
+
+### Shell Integration Scripts
+
+Sourceable shell integration scripts are available in the Nix package output
+under `$out/nix/integrations/`:
+
+| File        | Description                         |
+| ----------- | ----------------------------------- |
+| `bash.sh`   | Aliases and completion setup (bash) |
+| `zsh.sh`    | Aliases and completion setup (zsh)  |
+| `fish.fish` | Aliases and completion setup (fish) |
+| `direnvrc`  | Direnv integration for flakes       |
 
 ## Configuration
 
@@ -77,9 +118,10 @@ impure = true
 impure = false
 ```
 
-When `impure` is absent (the default), auto-retry with `--impure` is
-**automatic** — `eh` will add `--impure` and the appropriate `NIXPKGS_ALLOW_*`
-variable whenever it detects an unfree, insecure, or broken package.
+> [!TIP]
+> When `impure` is absent (the default), auto-retry with `--impure` is
+> **automatic**. `eh` will add `--impure` and the appropriate `NIXPKGS_ALLOW_*`
+> variable whenever it detects an unfree, insecure, or broken package.
 
 <!--markdownlint-disable MD013-->
 
