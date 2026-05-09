@@ -1,6 +1,7 @@
 use std::{env, path::Path};
 
-use eh::{Cli, Command, CommandFactory, Parser};
+use clap_complete::{generate, Shell};
+use eh::{Cli, Command, CommandFactory, Parser, Shell as EhShell};
 use yansi::Paint;
 
 mod commands;
@@ -26,7 +27,7 @@ fn main() {
   }
 }
 
-fn handle_command(command: &str, args: &[String]) -> error::Result<i32> {
+fn handle_command(command: &str, args: &[String], ask: bool) -> error::Result<i32> {
   let hash_extractor = util::RegexHashExtractor;
   let fixer = util::DefaultNixFileFixer;
   let classifier = util::DefaultNixErrorClassifier;
@@ -45,6 +46,7 @@ fn handle_command(command: &str, args: &[String]) -> error::Result<i32> {
         &fixer,
         &classifier,
         &cmd_cfg,
+        ask,
       )
     },
     _ => unreachable!(),
@@ -61,7 +63,7 @@ fn dispatch_multicall(
     "nr" => "run",
     "ns" => "shell",
     "nb" => "build",
-    "nd" => "develop",
+    "nd" | "dev" => "develop",
     "ni" => "info",
     "nu" => "update",
     _ => return None,
@@ -87,7 +89,7 @@ fn dispatch_multicall(
     return Some(Ok(0));
   }
 
-  Some(handle_command(subcommand, &rest))
+  Some(handle_command(subcommand, &rest, false))
 }
 
 fn run_app() -> error::Result<i32> {
@@ -106,17 +108,28 @@ fn run_app() -> error::Result<i32> {
   let cli = Cli::parse();
 
   match cli.command {
-    Some(Command::Run { args }) => handle_command("run", &args),
+    Some(Command::Run { ask, args }) => handle_command("run", &args, ask),
 
-    Some(Command::Shell { args }) => handle_command("shell", &args),
+    Some(Command::Shell { ask, args }) => handle_command("shell", &args, ask),
 
-    Some(Command::Build { args }) => handle_command("build", &args),
+    Some(Command::Build { ask, args }) => handle_command("build", &args, ask),
 
-    Some(Command::Develop { args }) => handle_command("develop", &args),
+    Some(Command::Develop { ask, args }) => handle_command("develop", &args, ask),
 
-    Some(Command::Info { args }) => handle_command("info", &args),
+    Some(Command::Info { args }) => handle_command("info", &args, false),
 
-    Some(Command::Update { args }) => handle_command("update", &args),
+    Some(Command::Update { args }) => handle_command("update", &args, false),
+
+    Some(Command::Completion { shell }) => {
+      let mut cmd = Cli::command();
+      let shell: Shell = match shell {
+        EhShell::Bash => Shell::Bash,
+        EhShell::Zsh => Shell::Zsh,
+        EhShell::Fish => Shell::Fish,
+      };
+      generate(shell, &mut cmd, "eh", &mut std::io::stdout());
+      Ok(0)
+    },
 
     None => {
       Cli::command().print_help()?;

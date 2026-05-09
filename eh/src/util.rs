@@ -486,6 +486,7 @@ pub fn handle_nix_with_retry(
   classifier: &dyn NixErrorClassifier,
   interactive: bool,
   cfg: &crate::config::CommandConfig,
+  ask: bool,
 ) -> Result<i32> {
   validate_nix_args(args)?;
 
@@ -501,6 +502,25 @@ pub fn handle_nix_with_retry(
         reason:  reason.to_string(),
       });
     }
+
+    // With --ask, prompt before auto-retry
+    if ask && std::io::stdin().is_terminal() {
+      let choices = ["Yes, retry with --impure", "No, cancel"];
+      let idx = dialoguer::Select::new()
+        .with_prompt(format!(
+          "Package {} requires `--impure` ({}). Retry?",
+          pkg.bold(),
+          reason.bold()
+        ))
+        .items(&choices)
+        .default(0)
+        .interact()
+        .map_err(|e| EhError::Io(std::io::Error::other(e)))?;
+      if idx != 0 {
+        return Err(EhError::ProcessExit { code: 1 });
+      }
+    }
+
     print_retry_msg(pkg, reason, env_var);
     let mut retry_cmd = NixCommand::new(subcommand)
       .print_build_logs(true)
@@ -540,7 +560,8 @@ pub fn handle_nix_with_retry(
   if let Some(new_hash) = hash_extractor.extract_hash(&stderr) {
     let old_hash = hash_extractor.extract_old_hash(&stderr);
 
-    // Ask for confirmation before fixing hash (skip in non-interactive mode)
+    // Ask for confirmation before fixing hash.
+    // With --ask: prompt always (error if no TTY). Without --ask: prompt only in TTY mode.
     let should_fix = if std::io::stdin().is_terminal() {
       dialoguer::Confirm::new()
         .with_prompt(format!(
@@ -550,6 +571,12 @@ pub fn handle_nix_with_retry(
         .default(true)
         .interact()
         .map_err(|e| EhError::Io(std::io::Error::other(e)))?
+    } else if ask {
+      return Err(EhError::Io(
+        std::io::Error::other(
+          "cannot prompt for hash fix confirmation in non-interactive mode (no TTY)"
+        )
+      ));
     } else {
       log_warn!(
         "{}: hash mismatch detected in non-interactive mode, skipping auto-fix",
@@ -611,6 +638,25 @@ pub fn handle_nix_with_retry(
           reason:  reason.to_string(),
         });
       }
+
+      // With --ask, prompt before auto-retry
+      if ask && std::io::stdin().is_terminal() {
+        let choices = ["Yes, retry with --impure", "No, cancel"];
+        let idx = dialoguer::Select::new()
+          .with_prompt(format!(
+            "Package {} requires `--impure` ({}). Retry?",
+            pkg.bold(),
+            reason.bold()
+          ))
+          .items(&choices)
+          .default(0)
+          .interact()
+          .map_err(|e| EhError::Io(std::io::Error::other(e)))?;
+        if idx != 0 {
+          return Err(EhError::ProcessExit { code: 1 });
+        }
+      }
+
       print_retry_msg(pkg, reason, env_var);
       let mut retry_cmd = NixCommand::new(subcommand)
         .print_build_logs(true)

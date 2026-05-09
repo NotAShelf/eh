@@ -337,6 +337,7 @@ pub fn handle_nix_command(
   fixer: &dyn NixFileFixer,
   classifier: &dyn NixErrorClassifier,
   cfg: &crate::config::CommandConfig,
+  ask: bool,
 ) -> Result<i32> {
   let intercept_env = matches!(command, "run" | "shell");
   handle_nix_with_retry(
@@ -347,6 +348,7 @@ pub fn handle_nix_command(
     classifier,
     intercept_env,
     cfg,
+    ask,
   )
 }
 
