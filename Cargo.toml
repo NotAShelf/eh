@@ -4,7 +4,6 @@ members         = [ "eh", "crates/*" ]
 resolver        = "3"
 
 [workspace.package]
-authors      = [ "NotAShelf <raf@notashelf.dev>" ]
 description  = "Ergonomic Nix CLI helper"
 edition      = "2024"
 license      = "MPL-2.0"
@@ -13,11 +12,11 @@ rust-version = "1.94.0"
 version      = "0.2.0"
 
 [workspace.dependencies]
-clap          = { default-features = false, features = [ "std", "help", "derive" ], version = "4.6.0" }
-clap_complete = "4.6.0"
+clap          = { default-features = false, features = [ "std", "help", "derive" ], version = "4.6.1" }
+clap_complete = "4.6.3"
 dialoguer     = { default-features = false, version = "0.12.0" }
 regex         = "1.12.3"
-serde         = { features = [ "derive" ], version = "1.0.149" }
+serde         = { features = [ "derive" ], version = "1.0.228" }
 serde_json    = "1.0.149"
 tempfile      = "3.27.0"
 textwrap      = "0.16.2"
@@ -26,8 +25,8 @@ toml          = { default-features = false, features = [ "parse", "serde" ], ver
 walkdir       = "2.5.0"
 yansi         = "1.0.1"
 
-eh     = { path = "./eh" }
-eh-log = { path = "./crates/eh-log" }
+eh     = { path = "./eh", version = "0.2.0" }
+eh-log = { path = "./crates/eh-log", version = "0.2.0" }
 
 [profile.release]
 codegen-units = 1

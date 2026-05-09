@@ -3,8 +3,8 @@ name                   = "eh-log"
 description            = "Styled logging for eh"
 version.workspace      = true
 edition.workspace      = true
-authors.workspace      = true
 rust-version.workspace = true
+publish                = false
 
 [dependencies]
 yansi.workspace = true

@@ -3,7 +3,6 @@ name                   = "eh"
 description.workspace  = true
 version.workspace      = true
 edition.workspace      = true
-authors.workspace      = true
 rust-version.workspace = true
 
 [lib]
@@ -11,15 +10,16 @@ crate-type = [ "lib" ]
 name       = "eh"
 
 [dependencies]
-clap.workspace       = true
-dialoguer.workspace  = true
-eh-log.workspace     = true
-regex.workspace      = true
-serde.workspace      = true
-serde_json.workspace = true
-tempfile.workspace   = true
-textwrap.workspace   = true
-thiserror.workspace  = true
-toml.workspace       = true
-walkdir.workspace    = true
-yansi.workspace      = true
+clap.workspace          = true
+clap_complete.workspace = true
+dialoguer.workspace     = true
+eh-log.workspace        = true
+regex.workspace         = true
+serde.workspace         = true
+serde_json.workspace    = true
+tempfile.workspace      = true
+textwrap.workspace      = true
+thiserror.workspace     = true
+toml.workspace          = true
+walkdir.workspace       = true
+yansi.workspace         = true
