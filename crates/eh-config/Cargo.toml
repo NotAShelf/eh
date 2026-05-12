@@ -1,0 +1,13 @@
+[package]
+name                   = "eh-config"
+description            = "Configuration loading for eh"
+version.workspace      = true
+edition.workspace      = true
+authors.workspace      = true
+rust-version.workspace = true
+
+[dependencies]
+dirs.workspace   = true
+eh-log.workspace = true
+serde.workspace  = true
+toml.workspace   = true
