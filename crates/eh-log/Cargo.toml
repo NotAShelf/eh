@@ -1,6 +1,6 @@
 [package]
 name                   = "eh-log"
-description            = "Styled logging for eh"
+description            = "Tiny, styled logging crate for eh"
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
