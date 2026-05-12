@@ -1,7 +1,4 @@
-pub mod commands;
-pub mod config;
 pub mod error;
-pub mod util;
 
 pub use clap::{CommandFactory, Parser, Subcommand};
 pub use error::{EhError, Result};
@@ -22,6 +19,14 @@ pub enum Shell {
 #[command(about = "Ergonomic Nix helper", long_about = None)]
 #[command(version)]
 pub struct Cli {
+  /// Increase logging verbosity (-v, -vv, -vvv)
+  #[arg(short, long, action = clap::ArgAction::Count, global = true)]
+  pub verbose: u8,
+
+  /// Decrease logging verbosity (-q, -qq)
+  #[arg(short, long, action = clap::ArgAction::Count, global = true)]
+  pub quiet: u8,
+
   #[command(subcommand)]
   pub command: Option<Command>,
 }

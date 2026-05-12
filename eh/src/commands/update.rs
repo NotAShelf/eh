@@ -1,6 +1,8 @@
+use nix_command::{CommandKind, NixCommand, StdIo};
+
 use crate::{
-  commands::{NixCommand, StdIoInterceptor},
   error::{EhError, Result},
+  nix_config::ApplyCommandConfig,
 };
 
 /// Parse flake input names from `nix flake metadata --json` output.
@@ -26,7 +28,7 @@ pub fn parse_flake_inputs(stdout: &str) -> Result<Vec<String>> {
 
 /// Fetch flake input names by running `nix flake metadata --json`.
 fn fetch_flake_inputs() -> Result<Vec<String>> {
-  let output = NixCommand::new("flake")
+  let output = NixCommand::new(CommandKind::Flake)
     .arg("metadata")
     .arg("--json")
     .print_build_logs(false)
@@ -57,9 +59,10 @@ fn prompt_input_selection(inputs: &[String]) -> Result<Vec<String>> {
 /// Otherwise, fetch inputs interactively and prompt for selection.
 pub fn handle_update(
   args: &[String],
-  cfg: &crate::config::CommandConfig,
+  cfg: &eh_config::CommandConfig,
 ) -> Result<i32> {
   let selected = if args.is_empty() {
+    eh_log::log_debug!("checking flake inputs");
     let inputs = fetch_flake_inputs()?;
     if inputs.is_empty() {
       return Err(EhError::NoFlakeInputs);
@@ -69,14 +72,16 @@ pub fn handle_update(
     args.to_vec()
   };
 
-  let mut cmd = NixCommand::new("flake").arg("lock").with_config(cfg);
+  let mut cmd = NixCommand::new(CommandKind::Flake)
+    .arg("lock")
+    .apply_config(cfg);
   for name in &selected {
     cmd = cmd.arg("--update-input").arg(name);
   }
 
   eh_log::log_info!("updating inputs: {}", selected.join(", "));
 
-  let status = cmd.run_with_logs(StdIoInterceptor)?;
+  let status = cmd.run_with_logs(StdIo)?;
   Ok(status.code().unwrap_or(1))
 }
 

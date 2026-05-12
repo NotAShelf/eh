@@ -5,9 +5,12 @@ use eh::{Cli, Command, CommandFactory, Parser, Shell as EhShell};
 use yansi::Paint;
 
 mod commands;
-mod config;
 mod error;
-mod util;
+mod eval;
+mod hash;
+mod nix_config;
+mod retry;
+mod suggestions;
 
 fn main() {
   let result = run_app();
@@ -28,10 +31,10 @@ fn main() {
 }
 
 fn handle_command(command: &str, args: &[String], ask: bool) -> error::Result<i32> {
-  let hash_extractor = util::RegexHashExtractor;
-  let fixer = util::DefaultNixFileFixer;
-  let classifier = util::DefaultNixErrorClassifier;
-  let cfg = config::load();
+  let hash_extractor = hash::RegexHashExtractor;
+  let fixer = hash::DefaultNixFileFixer;
+  let classifier = retry::DefaultNixErrorClassifier;
+  let cfg = eh_config::load();
   let cmd_cfg = cfg.for_command(command);
 
   match command {
@@ -55,9 +58,21 @@ fn handle_command(command: &str, args: &[String], ask: bool) -> error::Result<i3
 
 fn dispatch_multicall(
   app_name: &str,
-  args: std::env::Args,
+  args: impl IntoIterator<Item = String>,
 ) -> Option<error::Result<i32>> {
-  let rest: Vec<String> = args.collect();
+  let mut verbosity = 0i8;
+  let mut rest = Vec::new();
+  for arg in args {
+    match arg.as_str() {
+      "-v" | "--verbose" => verbosity += 1,
+      "-vv" => verbosity += 2,
+      "-vvv" => verbosity += 3,
+      "-q" | "--quiet" => verbosity -= 1,
+      "-qq" => verbosity -= 2,
+      _ => rest.push(arg),
+    }
+  }
+  eh_log::set_verbosity(verbosity);
 
   let subcommand = match app_name {
     "nr" => "run",
@@ -106,6 +121,7 @@ fn run_app() -> error::Result<i32> {
   }
 
   let cli = Cli::parse();
+  eh_log::set_verbosity(cli.verbose as i8 - cli.quiet as i8);
 
   match cli.command {
     Some(Command::Run { ask, args }) => handle_command("run", &args, ask),
