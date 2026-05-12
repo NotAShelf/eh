@@ -339,7 +339,7 @@ pub fn handle_nix_command(
   cfg: &crate::config::CommandConfig,
   ask: bool,
 ) -> Result<i32> {
-  let intercept_env = matches!(command, "run" | "shell");
+  let intercept_env = matches!(command, "run" | "shell" | "develop");
   handle_nix_with_retry(
     command,
     args,

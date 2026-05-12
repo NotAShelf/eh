@@ -494,7 +494,11 @@ pub fn handle_nix_with_retry(
   // running the actual command. This avoids streaming verbose nix error output
   // only to retry immediately after.
   let pkg = package_name(args);
-  let pre_eval_action = pre_evaluate(args)?;
+  let pre_eval_action = if subcommand == "develop" {
+    RetryAction::None
+  } else {
+    pre_evaluate(args)?
+  };
   if let Some((env_var, reason)) = pre_eval_action.env_override() {
     if cfg.impure == Some(false) {
       return Err(EhError::ImpureRequired {
