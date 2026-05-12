@@ -5,13 +5,14 @@
   rustfmt,
   clippy,
   taplo,
-  rust-analyzer-unwrapped,
-  rustPlatform,
+  rust-analyzer,
+  cargo-nextest,
 }:
 mkShell {
   name = "rust";
 
-  packages = [
+  strictDeps = true;
+  nativeBuildInputs = [
     rustc
     cargo
 
@@ -19,8 +20,8 @@ mkShell {
     clippy
     cargo
     taplo
-    rust-analyzer-unwrapped
-  ];
+    rust-analyzer
 
-  env.RUST_SRC_PATH = "${rustPlatform.rustLibSrc}";
+    cargo-nextest
+  ];
 }
