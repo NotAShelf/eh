@@ -168,6 +168,7 @@ fn read_pipe<R: Read>(
 
 pub struct NixCommand {
   kind:                    CommandKind,
+  binary:                  Option<String>,
   args:                    Vec<String>,
   env:                     Vec<(String, String)>,
   impure:                  bool,
@@ -184,6 +185,7 @@ impl NixCommand {
     let spec = kind.spec();
     Self {
       kind,
+      binary: None,
       args: Vec::new(),
       env: Vec::new(),
       impure: false,
@@ -237,6 +239,12 @@ impl NixCommand {
   }
 
   #[must_use]
+  pub fn binary<S: Into<String>>(mut self, path: S) -> Self {
+    self.binary = Some(path.into());
+    self
+  }
+
+  #[must_use]
   pub const fn interactive(mut self, yes: bool) -> Self {
     self.interactive = yes;
     self
@@ -268,7 +276,8 @@ impl NixCommand {
 
   #[must_use]
   pub fn argv(&self) -> Vec<String> {
-    let mut argv = vec!["nix".to_string(), self.kind.as_str().to_string()];
+    let nix = self.binary.as_deref().unwrap_or("nix").to_string();
+    let mut argv = vec![nix, self.kind.as_str().to_string()];
     if self.print_build_logs
       && !self.args.iter().any(|a| a == "--no-build-output")
     {
