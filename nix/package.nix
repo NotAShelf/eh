@@ -39,7 +39,6 @@ rustPlatform.buildRustPackage (finalAttrs: {
   doInstallCheck = true;
 
   strictDeps = true;
-
   nativeBuildInputs = [installShellFiles];
 
   postInstall = ''
@@ -58,6 +57,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   meta = {
     description = "Ergonomic Nix CLI helper";
+    homepage = "https://github.com/notashelf/eh";
     maintainers = with lib.maintainers; [NotAShelf];
     license = lib.licenses.mpl20;
     mainProgram = "eh";

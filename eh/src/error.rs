@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -9,6 +7,9 @@ pub enum EhError {
 
   #[error("io: {0}")]
   Io(#[from] std::io::Error),
+
+  #[error(transparent)]
+  NixCommand(#[from] nix_command::Error),
 
   #[error("regex: {0}")]
   Regex(#[from] regex::Error),
@@ -28,23 +29,11 @@ pub enum EhError {
   #[error("process exited with code {code}")]
   ProcessExit { code: i32 },
 
-  #[error("command '{command}' failed")]
-  CommandFailed { command: String },
-
-  #[error("nix {command} timed out after {} seconds", duration.as_secs())]
-  Timeout {
-    command:  String,
-    duration: Duration,
-  },
-
   #[error("'{expression}' failed to evaluate: {stderr}")]
   PreEvalFailed {
     expression: String,
     stderr:     String,
   },
-
-  #[error("invalid input '{input}': {reason}")]
-  InvalidInput { input: String, reason: String },
 
   #[error("failed to parse JSON from nix output: {detail}")]
   JsonParse { detail: String },
@@ -54,6 +43,9 @@ pub enum EhError {
 
   #[error("no inputs selected")]
   UpdateCancelled,
+
+  #[error("empty nix expression")]
+  InvalidEvalInput,
 
   #[error(
     "package {reason} but `--impure` is disabled for `{command}` in config"
@@ -69,20 +61,18 @@ impl EhError {
     match self {
       Self::ProcessExit { code } => *code,
       Self::NixCommandFailed { .. } => 2,
-      Self::CommandFailed { .. } => 3,
       Self::HashExtractionFailed { .. } => 4,
       Self::NoNixFilesFound => 5,
       Self::HashFixFailed { .. } => 6,
-      Self::InvalidInput { .. } => 7,
-      Self::Io(_) => 8,
+      Self::Io(_) | Self::NixCommand(_) => 8,
       Self::Regex(_) => 9,
       Self::Utf8(_) => 10,
-      Self::Timeout { .. } => 11,
       Self::PreEvalFailed { .. } => 12,
       Self::JsonParse { .. } => 13,
       Self::NoFlakeInputs => 14,
       Self::UpdateCancelled => 0,
       Self::ImpureRequired { .. } => 15,
+      Self::InvalidEvalInput => 16,
     }
   }
 
@@ -101,15 +91,6 @@ impl EhError {
       Self::NoNixFilesFound => {
         Some("run this command from a directory containing .nix files")
       },
-      Self::Timeout { .. } => {
-        Some(
-          "the command took too long; try a faster network or a smaller \
-           derivation",
-        )
-      },
-      Self::InvalidInput { .. } => {
-        Some("avoid shell metacharacters in nix arguments")
-      },
       Self::JsonParse { .. } => {
         Some("ensure 'nix flake metadata --json' produces valid output")
       },
@@ -122,12 +103,15 @@ impl EhError {
            ~/.config/eh/config.toml, or pass `--impure` manually",
         )
       },
+      Self::InvalidEvalInput => {
+        Some("pass a package name, flake reference, or path")
+      },
       Self::Io(_)
+      | Self::NixCommand(_)
       | Self::Regex(_)
       | Self::Utf8(_)
       | Self::HashFixFailed { .. }
       | Self::ProcessExit { .. }
-      | Self::CommandFailed { .. }
       | Self::UpdateCancelled => None,
     }
   }
@@ -147,13 +131,6 @@ mod tests {
       2
     );
     assert_eq!(
-      EhError::CommandFailed {
-        command: "x".into(),
-      }
-      .exit_code(),
-      3
-    );
-    assert_eq!(
       EhError::HashExtractionFailed {
         stderr: String::new(),
       }
@@ -162,22 +139,6 @@ mod tests {
     );
     assert_eq!(EhError::NoNixFilesFound.exit_code(), 5);
     assert_eq!(EhError::HashFixFailed { path: "x".into() }.exit_code(), 6);
-    assert_eq!(
-      EhError::InvalidInput {
-        input:  "x".into(),
-        reason: "y".into(),
-      }
-      .exit_code(),
-      7
-    );
-    assert_eq!(
-      EhError::Timeout {
-        command:  "build".into(),
-        duration: Duration::from_secs(300),
-      }
-      .exit_code(),
-      11
-    );
     assert_eq!(
       EhError::PreEvalFailed {
         expression: "x".into(),
@@ -194,12 +155,6 @@ mod tests {
 
   #[test]
   fn test_display_messages() {
-    let err = EhError::Timeout {
-      command:  "build".into(),
-      duration: Duration::from_secs(300),
-    };
-    assert_eq!(err.to_string(), "nix build timed out after 300 seconds");
-
     let err = EhError::PreEvalFailed {
       expression: "nixpkgs#hello".into(),
       stderr:     "attribute not found".into(),
@@ -231,22 +186,6 @@ mod tests {
       .is_some()
     );
     assert!(EhError::NoNixFilesFound.hint().is_some());
-    assert!(
-      EhError::Timeout {
-        command:  "x".into(),
-        duration: Duration::from_secs(1),
-      }
-      .hint()
-      .is_some()
-    );
-    assert!(
-      EhError::InvalidInput {
-        input:  "x".into(),
-        reason: "y".into(),
-      }
-      .hint()
-      .is_some()
-    );
     // Variants with hints
     assert!(
       EhError::NixCommandFailed {
@@ -258,13 +197,6 @@ mod tests {
     assert!(EhError::JsonParse { detail: "x".into() }.hint().is_some());
     assert!(EhError::NoFlakeInputs.hint().is_some());
     // Variants without hints
-    assert!(
-      EhError::CommandFailed {
-        command: "x".into(),
-      }
-      .hint()
-      .is_none()
-    );
     assert!(EhError::ProcessExit { code: 1 }.hint().is_none());
     assert!(EhError::UpdateCancelled.hint().is_none());
   }

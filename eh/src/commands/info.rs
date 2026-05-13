@@ -1,14 +1,18 @@
 use std::collections::HashMap;
 
 use eh_log::{log_error, log_info};
+use nix_command::{CommandKind, NixCommand};
 use serde::Deserialize;
 use yansi::Paint;
 
 use crate::{
-  commands::NixCommand,
   error::{EhError, Result},
-  util::{make_eval_expr, print_error_suggestions},
+  eval::make_eval_expr,
+  nix_config::ApplyCommandConfig,
+  suggestions::print_error_suggestions,
 };
+
+const UNKNOWN_LICENSE: &str = "Unknown";
 
 #[derive(Debug, Deserialize)]
 struct PackageMeta {
@@ -33,41 +37,24 @@ struct PackageOutputs {
 
 pub fn handle_info(
   args: &[String],
-  cfg: &crate::config::CommandConfig,
+  cfg: &eh_config::CommandConfig,
 ) -> Result<i32> {
-  // Get the package argument (skip flags)
   let pkg = args
     .iter()
     .find(|arg| !arg.starts_with('-'))
     .cloned()
     .unwrap_or_else(|| ".".to_string());
 
-  let eval_arg = make_eval_expr(&pkg);
-  let pkg_name: String = if eval_arg.contains("#") {
-    eval_arg
-      .split("#")
-      .last()
-      .unwrap_or(&eval_arg)
-      .trim_end_matches(".meta")
-      .to_string()
-  } else {
-    eval_arg.trim_end_matches(".meta").to_string()
-  };
-  // Handle .# case - show "default" as the package name
-  let pkg_name = if pkg_name.is_empty() {
-    "default".to_string()
-  } else {
-    pkg_name
-  };
+  let eval_arg = make_eval_expr(&pkg)?;
+  let pkg_name = package_name_from_eval_expr(&eval_arg);
 
   log_info!("Fetching info for {}", pkg_name.bold());
 
-  // Fetch metadata
-  let meta_cmd = NixCommand::new("eval")
+  let meta_cmd = NixCommand::new(CommandKind::Eval)
     .arg("--json")
     .arg(&eval_arg)
     .print_build_logs(false)
-    .with_config(cfg);
+    .apply_config(cfg);
 
   let meta_output = meta_cmd.output()?;
 
@@ -87,16 +74,15 @@ pub fn handle_info(
       )))
     })?;
 
-  // Fetch outputs
   let outputs_expr = eval_arg
     .strip_suffix(".meta")
     .unwrap_or(&eval_arg)
     .to_string();
-  let outputs_cmd = NixCommand::new("eval")
+  let outputs_cmd = NixCommand::new(CommandKind::Eval)
     .arg("--json")
     .arg(format!("{}.outputs", outputs_expr))
     .print_build_logs(false)
-    .with_config(cfg);
+    .apply_config(cfg);
 
   let outputs_output = outputs_cmd.output()?;
   let outputs: Option<PackageOutputs> = if outputs_output.status.success() {
@@ -105,10 +91,47 @@ pub fn handle_info(
     None
   };
 
-  // Print formatted info
   print_package_info(&meta, outputs.as_ref(), &pkg);
 
   Ok(0)
+}
+
+fn package_name_from_eval_expr(eval_arg: &str) -> String {
+  let name = eval_arg
+    .rsplit_once('#')
+    .map_or(eval_arg, |(_, name)| name)
+    .trim_end_matches(".meta");
+  if name.is_empty() { "default" } else { name }.to_string()
+}
+
+fn license_name(license: &serde_json::Value) -> Option<String> {
+  match license {
+    serde_json::Value::String(s) => Some(s.clone()),
+    serde_json::Value::Object(obj) => {
+      obj
+        .get("spdxId")
+        .and_then(|v| v.as_str())
+        .or_else(|| obj.get("shortName").and_then(|v| v.as_str()))
+        .map(str::to_string)
+    },
+    _ => None,
+  }
+}
+
+fn format_license(license: &serde_json::Value) -> String {
+  match license {
+    serde_json::Value::Array(licenses) => {
+      let names = licenses.iter().filter_map(license_name).collect::<Vec<_>>();
+      if names.is_empty() {
+        UNKNOWN_LICENSE.to_string()
+      } else {
+        names.join(", ")
+      }
+    },
+    license => {
+      license_name(license).unwrap_or_else(|| UNKNOWN_LICENSE.to_string())
+    },
+  }
 }
 
 fn print_package_info(
@@ -118,7 +141,6 @@ fn print_package_info(
 ) {
   println!();
 
-  // Header
   println!("  {} {}", "Package:".bold(), meta.name);
 
   if let Some(ref version) = meta.version {
@@ -129,7 +151,6 @@ fn print_package_info(
     println!("  {} {}", "Description:".bold(), desc);
   }
 
-  // Show long description if available and different from short description
   if let Some(ref long_desc) = meta.long_description {
     let should_show = meta
       .description
@@ -138,7 +159,6 @@ fn print_package_info(
       .unwrap_or(true);
     if should_show {
       println!();
-      // Wrap long description to 70 chars for readability
       let wrapped = textwrap::fill(long_desc, 70);
       for line in wrapped.lines() {
         println!("    {}", line);
@@ -146,58 +166,17 @@ fn print_package_info(
     }
   }
 
-  // License
   if let Some(ref license) = meta.license {
-    let license_str = match license {
-      serde_json::Value::String(s) => s.clone(),
-      serde_json::Value::Object(obj) => {
-        obj
-          .get("spdxId")
-          .and_then(|v| v.as_str())
-          .or_else(|| obj.get("shortName").and_then(|v| v.as_str()))
-          .unwrap_or("Unknown")
-          .to_string()
-      },
-      serde_json::Value::Array(licenses) => {
-        // Handle multiple licenses (e.g., neovim has Apache-2.0 AND Vim)
-        let license_names: Vec<String> = licenses
-          .iter()
-          .filter_map(|lic| {
-            match lic {
-              serde_json::Value::Object(obj) => {
-                obj
-                  .get("spdxId")
-                  .and_then(|v| v.as_str())
-                  .or_else(|| obj.get("shortName").and_then(|v| v.as_str()))
-                  .map(|s| s.to_string())
-              },
-              serde_json::Value::String(s) => Some(s.clone()),
-              _ => None,
-            }
-          })
-          .collect();
-
-        if license_names.is_empty() {
-          "Unknown".to_string()
-        } else {
-          license_names.join(", ")
-        }
-      },
-      _ => "Unknown".to_string(),
-    };
-    println!("  {} {}", "License:".bold(), license_str);
+    println!("  {} {}", "License:".bold(), format_license(license));
   }
 
-  // Homepage
   if let Some(ref homepage) = meta.homepage {
     println!("  {} {}", "Homepage:".bold(), homepage);
   }
 
-  // Meta section
   println!();
   println!("  {}", "Meta:".bold());
 
-  // Status indicators
   let mut status_parts = Vec::new();
   if meta.broken == Some(true) {
     status_parts.push("Broken".red().to_string());
@@ -215,7 +194,6 @@ fn print_package_info(
     println!("    {} {}", "Status:".bold(), status_parts.join(", "));
   }
 
-  // Platforms
   if let Some(ref platforms) = meta.platforms {
     let platform_list: Vec<_> = platforms.iter().take(4).cloned().collect();
     let platform_str = if platforms.len() > 4 {
@@ -230,7 +208,6 @@ fn print_package_info(
     println!("    {} {}", "Platforms:".bold(), platform_str);
   }
 
-  // Outputs section
   if let Some(outputs) = outputs {
     println!();
     println!("  {}", "Outputs:".bold());
@@ -241,7 +218,6 @@ fn print_package_info(
     }
   }
 
-  // Usage section
   println!();
   println!("  {}", "Usage:".bold());
   println!(
