@@ -167,12 +167,15 @@ fn read_pipe<R: Read>(
 }
 
 pub struct NixCommand {
-  kind:             CommandKind,
-  args:             Vec<String>,
-  env:              Vec<(String, String)>,
-  impure:           bool,
-  print_build_logs: bool,
-  interactive:      bool,
+  kind:                    CommandKind,
+  args:                    Vec<String>,
+  env:                     Vec<(String, String)>,
+  impure:                  bool,
+  print_build_logs:        bool,
+  interactive:             bool,
+  eval_profiler_mode:      Option<String>,
+  eval_profiler_frequency: Option<u32>,
+  eval_profile_file:       Option<String>,
 }
 
 impl NixCommand {
@@ -186,6 +189,9 @@ impl NixCommand {
       impure: false,
       print_build_logs: spec.print_build_logs,
       interactive: spec.interactive,
+      eval_profiler_mode: None,
+      eval_profiler_frequency: None,
+      eval_profile_file: None,
     }
   }
 
@@ -243,6 +249,24 @@ impl NixCommand {
   }
 
   #[must_use]
+  pub fn eval_profiler<S: Into<String>>(mut self, mode: S) -> Self {
+    self.eval_profiler_mode = Some(mode.into());
+    self
+  }
+
+  #[must_use]
+  pub const fn eval_profiler_frequency(mut self, hz: u32) -> Self {
+    self.eval_profiler_frequency = Some(hz);
+    self
+  }
+
+  #[must_use]
+  pub fn eval_profile_file<S: Into<String>>(mut self, path: S) -> Self {
+    self.eval_profile_file = Some(path.into());
+    self
+  }
+
+  #[must_use]
   pub fn argv(&self) -> Vec<String> {
     let mut argv = vec!["nix".to_string(), self.kind.as_str().to_string()];
     if self.print_build_logs
@@ -252,6 +276,18 @@ impl NixCommand {
     }
     if self.impure {
       argv.push("--impure".to_string());
+    }
+    if let Some(ref mode) = self.eval_profiler_mode {
+      argv.push("--eval-profiler".to_string());
+      argv.push(mode.clone());
+    }
+    if let Some(hz) = self.eval_profiler_frequency {
+      argv.push("--eval-profiler-frequency".to_string());
+      argv.push(hz.to_string());
+    }
+    if let Some(ref path) = self.eval_profile_file {
+      argv.push("--eval-profile-file".to_string());
+      argv.push(path.clone());
     }
     argv.extend(self.args.iter().cloned());
     argv
@@ -412,5 +448,28 @@ mod tests {
     assert!(NixCommand::new(CommandKind::Shell).interactive);
     assert!(NixCommand::new(CommandKind::Develop).interactive);
     assert!(!NixCommand::new(CommandKind::Build).interactive);
+  }
+
+  #[test]
+  fn eval_profiler_flags_are_added_to_argv() {
+    let argv = NixCommand::new(CommandKind::Eval)
+      .arg("nixpkgs#hello")
+      .impure(true)
+      .eval_profiler("flamegraph")
+      .eval_profiler_frequency(9999)
+      .eval_profile_file("/tmp/nix.profile")
+      .argv();
+    assert_eq!(argv, [
+      "nix",
+      "eval",
+      "--impure",
+      "--eval-profiler",
+      "flamegraph",
+      "--eval-profiler-frequency",
+      "9999",
+      "--eval-profile-file",
+      "/tmp/nix.profile",
+      "nixpkgs#hello"
+    ]);
   }
 }
