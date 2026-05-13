@@ -3,8 +3,9 @@ name                   = "nix-command"
 description            = "Typed Nix command construction and execution"
 version.workspace      = true
 edition.workspace      = true
-authors.workspace      = true
 rust-version.workspace = true
+publish                = true
+license.workspace      = true
 
 [dependencies]
 thiserror.workspace = true
