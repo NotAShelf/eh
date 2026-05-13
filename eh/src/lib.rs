@@ -36,28 +36,28 @@ pub enum Command {
   /// Run a Nix derivation
   Run {
     #[arg(short, long, default_value = "false")]
-    ask: bool,
+    ask:  bool,
     #[arg(trailing_var_arg = true)]
     args: Vec<String>,
   },
   /// Enter a Nix shell
   Shell {
     #[arg(short, long, default_value = "false")]
-    ask: bool,
+    ask:  bool,
     #[arg(trailing_var_arg = true)]
     args: Vec<String>,
   },
   /// Build a Nix derivation
   Build {
     #[arg(short, long, default_value = "false")]
-    ask: bool,
+    ask:  bool,
     #[arg(trailing_var_arg = true)]
     args: Vec<String>,
   },
   /// Enter a Nix development shell
   Develop {
     #[arg(short, long, default_value = "false")]
-    ask: bool,
+    ask:  bool,
     #[arg(trailing_var_arg = true)]
     args: Vec<String>,
   },

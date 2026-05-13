@@ -327,7 +327,8 @@ fn handle_hash_mismatch(
   if !std::io::stdin().is_terminal() {
     if ctx.ask {
       return Err(EhError::Io(std::io::Error::other(
-        "cannot prompt for hash fix confirmation in non-interactive mode (no TTY)",
+        "cannot prompt for hash fix confirmation in non-interactive mode (no \
+         TTY)",
       )));
     }
 

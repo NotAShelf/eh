@@ -1,6 +1,6 @@
 use std::{env, path::Path};
 
-use clap_complete::{generate, Shell};
+use clap_complete::{Shell, generate};
 use eh::{Cli, Command, CommandFactory, Parser, Shell as EhShell};
 use yansi::Paint;
 
@@ -30,7 +30,11 @@ fn main() {
   }
 }
 
-fn handle_command(command: &str, args: &[String], ask: bool) -> error::Result<i32> {
+fn handle_command(
+  command: &str,
+  args: &[String],
+  ask: bool,
+) -> error::Result<i32> {
   let hash_extractor = hash::RegexHashExtractor;
   let fixer = hash::DefaultNixFileFixer;
   let classifier = retry::DefaultNixErrorClassifier;
@@ -130,7 +134,9 @@ fn run_app() -> error::Result<i32> {
 
     Some(Command::Build { ask, args }) => handle_command("build", &args, ask),
 
-    Some(Command::Develop { ask, args }) => handle_command("develop", &args, ask),
+    Some(Command::Develop { ask, args }) => {
+      handle_command("develop", &args, ask)
+    },
 
     Some(Command::Info { args }) => handle_command("info", &args, false),
 
