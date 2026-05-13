@@ -127,7 +127,7 @@ dependencies = [
 
 [[package]]
 name = "eh"
-version = "0.2.0"
+version = "1.0.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -147,7 +147,7 @@ dependencies = [
 
 [[package]]
 name = "eh-config"
-version = "0.2.0"
+version = "1.0.0"
 dependencies = [
  "dirs",
  "eh-log",
@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "eh-log"
-version = "0.2.0"
+version = "1.0.0"
 dependencies = [
  "yansi",
 ]
@@ -793,7 +793,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.2.0"
+version = "1.0.0"
 dependencies = [
  "clap",
  "clap_complete",

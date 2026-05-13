@@ -5,6 +5,8 @@ version                = "0.2.2"
 edition.workspace      = true
 rust-version.workspace = true
 publish                = true
+homepage.workspace     = true
+repository.workspace   = true
 license.workspace      = true
 
 [dependencies]
