@@ -42,6 +42,7 @@ impl RetryAction {
 }
 
 pub fn classify_retry_action(stderr: &str) -> RetryAction {
+  let stderr = stderr.to_lowercase();
   if stderr.contains("refusing") && stderr.contains("has an unfree license") {
     RetryAction::AllowUnfree
   } else if stderr.contains("refusing")
@@ -403,5 +404,30 @@ mod tests {
       RetryAction::AllowBroken
     );
     assert_eq!(classify_retry_action("ordinary error"), RetryAction::None);
+  }
+
+  #[test]
+  fn classifies_retryable_errors_case_insensitive() {
+    assert_eq!(
+      classify_retry_action(
+        "error: Refusing to evaluate package 'discord' because it has an \
+         unfree license"
+      ),
+      RetryAction::AllowUnfree
+    );
+    assert_eq!(
+      classify_retry_action(
+        "Error: Refusing to evaluate package 'foo' because it has been marked \
+         as insecure"
+      ),
+      RetryAction::AllowInsecure
+    );
+    assert_eq!(
+      classify_retry_action(
+        "ERROR: REFUSING TO EVALUATE PACKAGE 'bar' BECAUSE IT HAS BEEN MARKED \
+         AS BROKEN"
+      ),
+      RetryAction::AllowBroken
+    );
   }
 }
