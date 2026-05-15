@@ -1,5 +1,7 @@
+use nix_command::CommandKind;
+
 use crate::{
-  error::Result,
+  error::{EhError, Result},
   hash::{HashExtractor, NixFileFixer},
   retry::{NixErrorClassifier, handle_nix_with_retry},
 };
@@ -16,14 +18,10 @@ pub fn handle_nix_command(
   cfg: &eh_config::CommandConfig,
   ask: bool,
 ) -> Result<i32> {
-  handle_nix_with_retry(
-    command,
-    args,
-    hash_extractor,
-    fixer,
-    classifier,
-    matches!(command, "run" | "shell" | "develop"),
-    cfg,
-    ask,
-  )
+  let kind = CommandKind::try_from(command).map_err(|_| {
+    EhError::NixCommandFailed {
+      command: command.to_string(),
+    }
+  })?;
+  handle_nix_with_retry(kind, args, hash_extractor, fixer, classifier, cfg, ask)
 }

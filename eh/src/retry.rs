@@ -58,41 +58,31 @@ pub fn classify_retry_action(stderr: &str) -> RetryAction {
   }
 }
 
-fn command_kind(subcommand: &str) -> Result<CommandKind> {
-  CommandKind::try_from(subcommand).map_err(|_| {
-    EhError::NixCommandFailed {
-      command: subcommand.to_string(),
-    }
-  })
-}
-
 fn nix_command(
-  subcommand: &str,
+  kind: CommandKind,
   args: &[String],
   cfg: &eh_config::CommandConfig,
   interactive: bool,
-) -> Result<NixCommand> {
-  Ok(
-    NixCommand::new(command_kind(subcommand)?)
-      .args_ref(args)
-      .apply_config(cfg)
-      .interactive(interactive),
-  )
+) -> NixCommand {
+  NixCommand::new(kind)
+    .args_ref(args)
+    .apply_config(cfg)
+    .interactive(interactive)
 }
 
 fn run_nix_command(
-  subcommand: &str,
+  kind: CommandKind,
   args: &[String],
   cfg: &eh_config::CommandConfig,
   interactive: bool,
   env_override: Option<&str>,
 ) -> Result<i32> {
-  let mut cmd = nix_command(subcommand, args, cfg, interactive)?;
+  let mut cmd = nix_command(kind, args, cfg, interactive);
   if let Some(env_var) = env_override {
     cmd = cmd.env(env_var, "1").impure(true);
   }
   if interactive {
-    log_debug!("entering {}", command_display(subcommand, args));
+    log_debug!("entering {}", command_display(kind.as_str(), args));
   }
   Ok(cmd.run_with_logs(StdIo)?.code().unwrap_or(1))
 }
@@ -200,38 +190,51 @@ fn pre_evaluate(args: &[String]) -> Result<RetryAction> {
 }
 
 pub fn handle_nix_with_retry(
-  subcommand: &str,
+  kind: CommandKind,
   args: &[String],
   hash_extractor: &dyn HashExtractor,
   fixer: &dyn NixFileFixer,
   classifier: &dyn NixErrorClassifier,
-  interactive: bool,
   cfg: &eh_config::CommandConfig,
   ask: bool,
 ) -> Result<i32> {
+  let interactive = kind.spec().interactive;
   let pkg = package_arg(args).unwrap_or("<unknown>");
-  log_debug!("checking {}", command_display(subcommand, args));
-  if let Some((env_var, reason)) = pre_evaluate(args)?.env_override() {
-    ensure_impure_allowed(cfg, subcommand, reason)?;
+
+  // Pre-evaluation probes `.meta` and does a bare `nix eval` to detect
+  // unfree/broken/insecure packages before attempting the real command.
+  // This is only meaningful for commands that operate on package derivations.
+  // `develop` targets devShells; `eval` and `flake` are not package commands.
+  let pre_eval_result = match kind {
+    CommandKind::Build | CommandKind::Run | CommandKind::Shell => {
+      pre_evaluate(args)?
+    },
+    CommandKind::Develop | CommandKind::Eval | CommandKind::Flake => {
+      RetryAction::None
+    },
+  };
+  log_debug!("checking {}", command_display(kind.as_str(), args));
+  if let Some((env_var, reason)) = pre_eval_result.env_override() {
+    ensure_impure_allowed(cfg, kind.as_str(), reason)?;
     confirm_impure_retry(pkg, reason, ask)?;
     print_retry_msg(pkg, reason, env_var);
-    return run_nix_command(subcommand, args, cfg, interactive, Some(env_var));
+    return run_nix_command(kind, args, cfg, interactive, Some(env_var));
   }
 
+  // Interactive commands (run/shell/develop) inherit stdio directly. Their
+  // output is never captured, so there is nothing to inspect for retry
+  // heuristics after the fact. Return the exit code as-is.
   if interactive {
-    let code = run_nix_command(subcommand, args, cfg, true, None)?;
-    if code == 0 {
-      return Ok(0);
-    }
+    return run_nix_command(kind, args, cfg, true, None);
   }
 
-  log_debug!("running {}", command_display(subcommand, args));
-  let output = nix_command(subcommand, args, cfg, false)?.output()?;
+  log_debug!("running {}", command_display(kind.as_str(), args));
+  let output = nix_command(kind, args, cfg, false).output()?;
   let stderr = String::from_utf8_lossy(&output.stderr);
 
   if let Some(new_hash) = hash_extractor.extract_hash(&stderr) {
     let ctx = HashFixContext {
-      subcommand,
+      kind,
       args,
       cfg,
       interactive,
@@ -256,10 +259,10 @@ pub fn handle_nix_with_retry(
     && let Some((env_var, reason)) =
       classify_retry_action(&stderr).env_override()
   {
-    ensure_impure_allowed(cfg, subcommand, reason)?;
+    ensure_impure_allowed(cfg, kind.as_str(), reason)?;
     confirm_impure_retry(pkg, reason, ask)?;
     print_retry_msg(pkg, reason, env_var);
-    return run_nix_command(subcommand, args, cfg, interactive, Some(env_var));
+    return run_nix_command(kind, args, cfg, interactive, Some(env_var));
   }
 
   if output.status.success() {
@@ -273,7 +276,7 @@ pub fn handle_nix_with_retry(
   output.status.code().map_or_else(
     || {
       Err(EhError::NixCommandFailed {
-        command: subcommand.to_string(),
+        command: kind.as_str().to_string(),
       })
     },
     |code| Err(EhError::ProcessExit { code }),
@@ -311,7 +314,7 @@ fn confirm_impure_retry(pkg: &str, reason: &str, ask: bool) -> Result<()> {
 }
 
 struct HashFixContext<'a> {
-  subcommand:  &'a str,
+  kind:        CommandKind,
   args:        &'a [String],
   cfg:         &'a eh_config::CommandConfig,
   interactive: bool,
@@ -360,7 +363,7 @@ fn handle_hash_mismatch(
         "{}: hash mismatch corrected in local files, rebuilding",
         ctx.pkg.bold()
       );
-      run_nix_command(ctx.subcommand, ctx.args, ctx.cfg, ctx.interactive, None)
+      run_nix_command(ctx.kind, ctx.args, ctx.cfg, ctx.interactive, None)
         .map(Some)
     },
     Ok(false) | Err(EhError::NoNixFilesFound) => Ok(None),
