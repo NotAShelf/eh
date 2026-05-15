@@ -36,40 +36,64 @@ pub enum Command {
   /// Run a Nix derivation
   Run {
     #[arg(short, long, default_value = "false")]
-    ask:  bool,
-    #[arg(trailing_var_arg = true)]
-    args: Vec<String>,
+    ask:      bool,
+    /// Installable(s) to run
+    #[arg(num_args(0..))]
+    args:     Vec<String>,
+    /// Extra flags forwarded verbatim to `nix run` (after `--`)
+    #[arg(last = true)]
+    nix_args: Vec<String>,
   },
   /// Enter a Nix shell
   Shell {
     #[arg(short, long, default_value = "false")]
-    ask:  bool,
-    #[arg(trailing_var_arg = true)]
-    args: Vec<String>,
+    ask:      bool,
+    /// Installable(s) for the shell environment
+    #[arg(num_args(0..))]
+    args:     Vec<String>,
+    /// Extra flags forwarded verbatim to `nix shell` (after `--`)
+    #[arg(last = true)]
+    nix_args: Vec<String>,
   },
   /// Build a Nix derivation
   Build {
     #[arg(short, long, default_value = "false")]
-    ask:  bool,
-    #[arg(trailing_var_arg = true)]
-    args: Vec<String>,
+    ask:      bool,
+    /// Installable(s) to build
+    #[arg(num_args(0..))]
+    args:     Vec<String>,
+    /// Extra flags forwarded verbatim to `nix build` (after `--`)
+    #[arg(last = true)]
+    nix_args: Vec<String>,
   },
   /// Enter a Nix development shell
   Develop {
     #[arg(short, long, default_value = "false")]
-    ask:  bool,
-    #[arg(trailing_var_arg = true)]
-    args: Vec<String>,
+    ask:      bool,
+    /// Installable for the development shell
+    #[arg(num_args(0..))]
+    args:     Vec<String>,
+    /// Extra flags forwarded verbatim to `nix develop` (after `--`)
+    #[arg(last = true)]
+    nix_args: Vec<String>,
   },
   /// Show package information
   Info {
-    #[arg(trailing_var_arg = true)]
-    args: Vec<String>,
+    /// Installable(s) to query
+    #[arg(num_args(0..))]
+    args:     Vec<String>,
+    /// Extra flags forwarded verbatim to `nix eval` (after `--`)
+    #[arg(last = true)]
+    nix_args: Vec<String>,
   },
   /// Update flake inputs interactively
   Update {
-    #[arg(trailing_var_arg = true)]
-    args: Vec<String>,
+    /// Flake input(s) to update
+    #[arg(num_args(0..))]
+    args:     Vec<String>,
+    /// Extra flags forwarded verbatim to `nix flake lock` (after `--`)
+    #[arg(last = true)]
+    nix_args: Vec<String>,
   },
   /// Generate shell completions
   Completion {

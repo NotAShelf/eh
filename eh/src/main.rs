@@ -32,9 +32,12 @@ fn main() {
 
 fn handle_command(
   command: &str,
-  args: &[String],
+  args: Vec<String>,
+  nix_args: Vec<String>,
   ask: bool,
 ) -> error::Result<i32> {
+  let mut all_args = args;
+  all_args.extend(nix_args);
   let hash_extractor = hash::RegexHashExtractor;
   let fixer = hash::DefaultNixFileFixer;
   let classifier = retry::DefaultNixErrorClassifier;
@@ -42,13 +45,13 @@ fn handle_command(
   let cmd_cfg = cfg.for_command(command);
 
   match command {
-    "info" => commands::info::handle_info(args, &cmd_cfg),
+    "info" => commands::info::handle_info(&all_args, &cmd_cfg),
 
-    "update" => commands::update::handle_update(args, &cmd_cfg),
+    "update" => commands::update::handle_update(&all_args, &cmd_cfg),
     "run" | "shell" | "build" | "develop" => {
       commands::handle_nix_command(
         command,
-        args,
+        &all_args,
         &hash_extractor,
         &fixer,
         &classifier,
@@ -108,7 +111,7 @@ fn dispatch_multicall(
     return Some(Ok(0));
   }
 
-  Some(handle_command(subcommand, &rest, false))
+  Some(handle_command(subcommand, rest, vec![], false))
 }
 
 fn run_app() -> error::Result<i32> {
@@ -128,19 +131,37 @@ fn run_app() -> error::Result<i32> {
   eh_log::set_verbosity(cli.verbose as i8 - cli.quiet as i8);
 
   match cli.command {
-    Some(Command::Run { ask, args }) => handle_command("run", &args, ask),
+    Some(Command::Run {
+      ask,
+      args,
+      nix_args,
+    }) => handle_command("run", args, nix_args, ask),
 
-    Some(Command::Shell { ask, args }) => handle_command("shell", &args, ask),
+    Some(Command::Shell {
+      ask,
+      args,
+      nix_args,
+    }) => handle_command("shell", args, nix_args, ask),
 
-    Some(Command::Build { ask, args }) => handle_command("build", &args, ask),
+    Some(Command::Build {
+      ask,
+      args,
+      nix_args,
+    }) => handle_command("build", args, nix_args, ask),
 
-    Some(Command::Develop { ask, args }) => {
-      handle_command("develop", &args, ask)
+    Some(Command::Develop {
+      ask,
+      args,
+      nix_args,
+    }) => handle_command("develop", args, nix_args, ask),
+
+    Some(Command::Info { args, nix_args }) => {
+      handle_command("info", args, nix_args, false)
     },
 
-    Some(Command::Info { args }) => handle_command("info", &args, false),
-
-    Some(Command::Update { args }) => handle_command("update", &args, false),
+    Some(Command::Update { args, nix_args }) => {
+      handle_command("update", args, nix_args, false)
+    },
 
     Some(Command::Completion { shell }) => {
       let mut cmd = Cli::command();
