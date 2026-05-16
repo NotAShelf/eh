@@ -91,7 +91,7 @@ pub enum Command {
     /// Flake input(s) to update
     #[arg(num_args(0..))]
     args:     Vec<String>,
-    /// Extra flags forwarded verbatim to `nix flake lock` (after `--`)
+    /// Extra flags forwarded verbatim to `nix flake update` (after `--`)
     #[arg(last = true)]
     nix_args: Vec<String>,
   },
