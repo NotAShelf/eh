@@ -73,10 +73,10 @@ pub fn handle_update(
   };
 
   let mut cmd = NixCommand::new(CommandKind::Flake)
-    .arg("lock")
+    .arg("update")
     .apply_config(cfg);
   for name in &selected {
-    cmd = cmd.arg("--update-input").arg(name);
+    cmd = cmd.arg(name);
   }
 
   eh_log::log_info!("updating inputs: {}", selected.join(", "));
