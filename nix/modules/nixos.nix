@@ -12,8 +12,8 @@ self: {
 in {
   options.programs.eh = {
     enable = mkEnableOption "eh - Ergonomic Nix CLI helper";
-    package = mkPackageOption self.packages.${pkgs.hostPlatform.system} ["eh"] {
-      pkgsText = literalExpression "self.packages.$${pkgs.hostPlatform.system}";
+    package = mkPackageOption self.packages.${pkgs.stdenv.hostPlatform.system} ["eh"] {
+      pkgsText = literalExpression "self.packages.$${pkgs.stdenv.hostPlatform.system}";
     };
 
     hooks = {
