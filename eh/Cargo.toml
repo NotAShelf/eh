@@ -12,6 +12,7 @@ name       = "eh"
 [dependencies]
 clap.workspace          = true
 clap_complete.workspace = true
+dirs.workspace          = true
 dialoguer.workspace     = true
 eh-config.workspace     = true
 eh-log.workspace        = true
@@ -24,3 +25,4 @@ textwrap.workspace      = true
 thiserror.workspace     = true
 walkdir.workspace       = true
 yansi.workspace         = true
+nix-index.workspace     = true

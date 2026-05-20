@@ -2,6 +2,24 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum EhError {
+  #[error("no binary name provided")]
+  MissingBinary,
+
+  #[error("invalid binary name '{binary}'")]
+  InvalidBinaryName { binary: String },
+
+  #[error("nix-index database error: {0}")]
+  NixIndex(#[from] nix_index::database::Error),
+
+  #[error("no package found providing binary '{binary}'")]
+  BinaryNotFound { binary: String },
+
+  #[error("multiple packages provide binary '{binary}': {candidates:?}")]
+  AmbiguousBinary {
+    binary:     String,
+    candidates: Vec<String>,
+  },
+
   #[error("nix {command} failed")]
   NixCommandFailed { command: String },
 
@@ -73,12 +91,35 @@ impl EhError {
       Self::UpdateCancelled => 0,
       Self::ImpureRequired { .. } => 15,
       Self::InvalidEvalInput => 16,
+      Self::MissingBinary => 17,
+      Self::InvalidBinaryName { .. } => 18,
+      Self::NixIndex(_) => 19,
+      Self::BinaryNotFound { .. } => 20,
+      Self::AmbiguousBinary { .. } => 21,
     }
   }
 
   #[must_use]
   pub const fn hint(&self) -> Option<&str> {
     match self {
+      Self::MissingBinary => {
+        Some("pass a binary name, for example `eh , hello`")
+      },
+      Self::InvalidBinaryName { .. } => {
+        Some("pass the executable name without a path")
+      },
+      Self::NixIndex(_) => {
+        Some("run `nix-index` to generate or refresh the local database")
+      },
+      Self::BinaryNotFound { .. } => {
+        Some(
+          "run `nix-index` to refresh the local database or check the binary \
+           name",
+        )
+      },
+      Self::AmbiguousBinary { .. } => {
+        Some("run one of the listed installables directly with `eh run`")
+      },
       Self::NixCommandFailed { .. } => {
         Some("run with --show-trace for more details")
       },

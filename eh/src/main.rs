@@ -38,9 +38,6 @@ fn handle_command(
 ) -> error::Result<i32> {
   let mut all_args = args;
   all_args.extend(nix_args);
-  let hash_extractor = hash::RegexHashExtractor;
-  let fixer = hash::DefaultNixFileFixer;
-  let classifier = retry::DefaultNixErrorClassifier;
   let cfg = eh_config::load();
   let cmd_cfg = cfg.for_command(command);
 
@@ -49,16 +46,9 @@ fn handle_command(
 
     "update" => commands::update::handle_update(&all_args, &cmd_cfg),
     "run" | "shell" | "build" | "develop" => {
-      commands::handle_nix_command(
-        command,
-        &all_args,
-        &hash_extractor,
-        &fixer,
-        &classifier,
-        &cmd_cfg,
-        ask,
-      )
+      commands::handle_default_nix_command(command, &all_args, &cmd_cfg, ask)
     },
+    "comma" => commands::comma::handle_comma(&all_args, &cmd_cfg, ask),
     _ => unreachable!(),
   }
 }
@@ -88,6 +78,7 @@ fn dispatch_multicall(
     "nd" | "dev" => "develop",
     "ni" => "info",
     "nu" => "update",
+    "," => "comma",
     _ => return None,
   };
 
@@ -131,6 +122,12 @@ fn run_app() -> error::Result<i32> {
   eh_log::set_verbosity(cli.verbose as i8 - cli.quiet as i8);
 
   match cli.command {
+    Some(Command::Comma {
+      ask,
+      args,
+      nix_args,
+    }) => handle_command("comma", args, nix_args, ask),
+
     Some(Command::Run {
       ask,
       args,
