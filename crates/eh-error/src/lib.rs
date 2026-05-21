@@ -103,7 +103,7 @@ impl EhError {
   pub const fn hint(&self) -> Option<&str> {
     match self {
       Self::MissingBinary => {
-        Some("pass a binary name, for example `eh , hello`")
+        Some("pass a binary name, for example `eh comma hello`")
       },
       Self::InvalidBinaryName { .. } => {
         Some("pass the executable name without a path")
