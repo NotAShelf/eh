@@ -1,4 +1,4 @@
-use crate::error::{EhError, Result};
+use eh_error::{EhError, Result};
 
 pub fn package_arg(args: &[String]) -> Option<&str> {
   args

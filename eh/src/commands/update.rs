@@ -1,9 +1,8 @@
 use nix_command::{CommandKind, NixCommand, StdIo};
 
-use crate::{
-  error::{EhError, Result},
-  nix_config::ApplyCommandConfig,
-};
+use eh_error::{EhError, Result};
+
+use crate::nix_config::ApplyCommandConfig;
 
 /// Parse flake input names from `nix flake metadata --json` output.
 pub fn parse_flake_inputs(stdout: &str) -> Result<Vec<String>> {

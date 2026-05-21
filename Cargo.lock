@@ -469,6 +469,8 @@ dependencies = [
  "dialoguer",
  "dirs",
  "eh-config",
+ "eh-error",
+ "eh-locate",
  "eh-log",
  "nix-command",
  "nix-index",
@@ -490,6 +492,27 @@ dependencies = [
  "eh-log",
  "serde",
  "toml",
+]
+
+[[package]]
+name = "eh-error"
+version = "0.1.0"
+dependencies = [
+ "nix-command",
+ "nix-index",
+ "regex",
+ "thiserror",
+]
+
+[[package]]
+name = "eh-locate"
+version = "0.1.0"
+dependencies = [
+ "dialoguer",
+ "dirs",
+ "eh-error",
+ "nix-index",
+ "regex",
 ]
 
 [[package]]

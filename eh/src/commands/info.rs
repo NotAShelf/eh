@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 use eh_log::{log_error, log_info};
+use eh_error::{EhError, Result};
 use nix_command::{CommandKind, NixCommand};
 use serde::Deserialize;
 use yansi::Paint;
 
 use crate::{
-  error::{EhError, Result},
   eval::make_eval_expr,
   nix_config::ApplyCommandConfig,
   suggestions::print_error_suggestions,

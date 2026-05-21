@@ -1,7 +1,5 @@
-pub mod error;
-
 pub use clap::{CommandFactory, Parser, Subcommand};
-pub use error::{EhError, Result};
+pub use eh_error::{EhError, Result};
 
 /// Supported shells for completion generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]

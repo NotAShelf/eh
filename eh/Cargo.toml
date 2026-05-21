@@ -26,3 +26,5 @@ thiserror.workspace     = true
 walkdir.workspace       = true
 yansi.workspace         = true
 nix-index.workspace     = true
+eh-locate.workspace    = true
+eh-error.workspace      = true

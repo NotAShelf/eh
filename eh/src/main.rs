@@ -2,10 +2,10 @@ use std::{env, path::Path};
 
 use clap_complete::{Shell, generate};
 use eh::{Cli, Command, CommandFactory, Parser, Shell as EhShell};
+use eh_error::Result;
 use yansi::Paint;
 
 mod commands;
-mod error;
 mod eval;
 mod hash;
 mod nix_config;
@@ -35,7 +35,7 @@ fn handle_command(
   args: Vec<String>,
   nix_args: Vec<String>,
   ask: bool,
-) -> error::Result<i32> {
+) -> Result<i32> {
   let mut all_args = args;
   all_args.extend(nix_args);
   let cfg = eh_config::load();
@@ -56,7 +56,7 @@ fn handle_command(
 fn dispatch_multicall(
   app_name: &str,
   args: impl IntoIterator<Item = String>,
-) -> Option<error::Result<i32>> {
+) -> Option<Result<i32>> {
   let mut verbosity = 0i8;
   let mut rest = Vec::new();
   for arg in args {
@@ -105,7 +105,7 @@ fn dispatch_multicall(
   Some(handle_command(subcommand, rest, vec![], false))
 }
 
-fn run_app() -> error::Result<i32> {
+fn run_app() -> Result<i32> {
   let mut args = env::args();
   let bin = args.next().unwrap_or_else(|| "eh".to_string());
   let app_name = Path::new(&bin)

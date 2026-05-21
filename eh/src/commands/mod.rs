@@ -1,7 +1,8 @@
 use nix_command::CommandKind;
 
+use eh_error::{EhError, Result};
+
 use crate::{
-  error::{EhError, Result},
   hash::{HashExtractor, NixFileFixer},
   retry::{NixErrorClassifier, handle_nix_with_retry},
 };
