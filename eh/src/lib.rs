@@ -31,14 +31,14 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
-  /// Call a Binary to run
+  /// Runa binary from nixpkgs via nix-index
   Comma {
     #[arg(short, long, default_value = "false")]
     ask:      bool,
     /// Installable(s) to run
     #[arg(num_args(0..))]
     args:     Vec<String>,
-    /// Extra flags forwarded verbatim to `nix run` (after `--`)
+    /// Extra flags forwarded verbatim to `the binary` (after `--`)
     #[arg(last = true)]
     nix_args: Vec<String>,
   },

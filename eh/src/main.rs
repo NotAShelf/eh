@@ -90,10 +90,17 @@ fn dispatch_multicall(
       format!("eh {subcommand}").bold()
     );
     eprintln!("  {} {app_name} [args...]", "usage:".green().bold());
-    eprintln!(
-      "  All arguments are forwarded to '{}'.",
-      format!("nix {subcommand}").dim()
-    );
+    if subcommand == "comma" {
+      eprintln!(
+        "  Resolves the first argument with nix-index, then runs it via '{}'.",
+        "nix shell <installable> -c <binary>".dim()
+      );
+    } else {
+      eprintln!(
+        "  All arguments are forwarded to '{}'.",
+        format!("nix {subcommand}").dim()
+      );
+    }
     return Some(Ok(0));
   }
 
