@@ -118,7 +118,10 @@ impl EhError {
         )
       },
       Self::AmbiguousBinary { .. } => {
-        Some("run one of the listed installables directly with `eh run`")
+        Some(
+          "run one of the listed installables directly with `eh shell \
+           nixpkgs#<package-name> -c <binary>`",
+        )
       },
       Self::NixCommandFailed { .. } => {
         Some("run with --show-trace for more details")
