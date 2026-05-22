@@ -1,7 +1,5 @@
-pub mod error;
-
 pub use clap::{CommandFactory, Parser, Subcommand};
-pub use error::{EhError, Result};
+pub use eh_error::{EhError, Result};
 
 /// Supported shells for completion generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -33,6 +31,18 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
+  /// Call a Binary to run
+  Comma {
+    #[arg(short, long, default_value = "false")]
+    ask:      bool,
+    /// Installable(s) to run
+    #[arg(num_args(0..))]
+    args:     Vec<String>,
+    /// Extra flags forwarded verbatim to `nix run` (after `--`)
+    #[arg(last = true)]
+    nix_args: Vec<String>,
+  },
+
   /// Run a Nix derivation
   Run {
     #[arg(short, long, default_value = "false")]
