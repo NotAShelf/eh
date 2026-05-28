@@ -57,9 +57,9 @@ skipping. Without `--ask`, prompts only appear in TTY mode.
 By default, you may run the `eh` binary akin to Nix with a nicer interface. The
 supported Nix commands, i.e., nix `build`, `shell`, `run` and `develop` become
 `eh build`, `eh shell`, `eh run` and `eh develop`. However, it is possible to
-symlink the `eh` binary to `nb`, `ns`, `nr`, `nd`, `dev`, `ni`, and `nu` to
-invoke a specific feature. For example, `nb` will act as `eh build`, `nr` will
-be `eh run`, and `dev` is an alias for `nd`.
+symlink the `eh` binary to `,`, `nb`, `ns`, `nr`, `nd`, `dev`, `ni`, and `nu` to
+invoke a specific feature. For example, `,` aliases to `eh comma`, `nb` will act
+as `eh build`, `nr` will be `eh run`, and `dev` is an alias for `nd`.
 
 One special example is `eh update`, which is aliased to `nu`, that handles
 interactive Nix flake updates. It is special in the sense that the usage is
@@ -76,6 +76,7 @@ nd .#myPackage             # nix develop .#myPackage
 dev .#myPackage            # nix develop .#myPackage (alias for nd)
 ni nixpkgs#hello           # nix eval nixpkgs#hello.meta
 nu                         # nix flake update
+, glxgears                 # nix shell nixpkgs#mesa-demos -c glxgears
 ```
 
 ### Shell Completions

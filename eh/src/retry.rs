@@ -1,11 +1,11 @@
 use std::io::{IsTerminal, Write};
 
 use eh_log::{log_debug, log_info, log_warn};
+use eh_error::{EhError, Result};
 use nix_command::{CommandKind, NixCommand, StdIo};
 use yansi::Paint;
 
 use crate::{
-  error::{EhError, Result},
   eval::{make_eval_expr, package_arg},
   hash::{HashExtractor, NixFileFixer, is_hash_mismatch_error},
   nix_config::ApplyCommandConfig,

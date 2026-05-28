@@ -10,7 +10,7 @@ use tempfile::NamedTempFile;
 use walkdir::WalkDir;
 use yansi::Paint;
 
-use crate::error::{EhError, Result};
+use eh_error::{EhError, Result};
 
 const MAX_DIR_DEPTH: usize = 3;
 
