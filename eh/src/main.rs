@@ -92,7 +92,7 @@ fn dispatch_multicall(
     eprintln!("  {} {app_name} [args...]", "usage:".green().bold());
     if subcommand == "comma" {
       eprintln!(
-        "  Resolves the first argument with nix-index, then runs it via '{}'.",
+        "  Resolves the first argument with the index, then runs it via '{}'.",
         "nix shell <installable> -c <binary>".dim()
       );
     } else {

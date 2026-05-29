@@ -14,6 +14,8 @@ pub struct Config {
   #[serde(default)]
   pub impure:   Option<bool>,
   #[serde(default)]
+  pub spam_db:  Option<PathBuf>,
+  #[serde(default)]
   pub commands: HashMap<String, CommandConfig>,
 }
 
@@ -21,9 +23,11 @@ pub struct Config {
 #[serde(deny_unknown_fields)]
 pub struct CommandConfig {
   #[serde(default)]
-  pub impure: Option<bool>,
+  pub impure:  Option<bool>,
   #[serde(default)]
-  pub env:    HashMap<String, String>,
+  pub spam_db: Option<PathBuf>,
+  #[serde(default)]
+  pub env:     HashMap<String, String>,
 }
 
 impl Config {
@@ -31,7 +35,17 @@ impl Config {
   pub fn for_command(&self, command: &str) -> CommandConfig {
     let mut cmd = self.commands.get(command).cloned().unwrap_or_default();
     cmd.impure = cmd.impure.or(self.impure);
+    cmd.spam_db = cmd
+      .spam_db
+      .or_else(|| self.spam_db.clone())
+      .or_else(|| Some(default_spam_db()));
     cmd
+  }
+}
+
+impl CommandConfig {
+  pub fn get_spam_db(&self) -> &Path {
+    self.spam_db.as_deref().expect("spam_db should be resolved")
   }
 }
 
@@ -58,6 +72,12 @@ fn find_project_config() -> Option<PathBuf> {
 
 fn global_config_path() -> Option<PathBuf> {
   dirs::config_dir().map(|dir| dir.join("eh").join("config.toml"))
+}
+
+fn default_spam_db() -> PathBuf {
+  dirs::home_dir()
+    .map(|home| home.join(".cache").join("spam").join("files.db"))
+    .unwrap_or_else(|| PathBuf::from(".cache/spam/files.db"))
 }
 
 fn load_from_file(path: &Path) -> Option<Config> {
@@ -121,6 +141,40 @@ mod tests {
     assert_eq!(
       table.for_command("shell").env.get("MY_VAR"),
       Some(&"hello".into())
+    );
+  }
+
+  #[test]
+  fn parses_spam_db_path() {
+    let cfg: Config = toml::from_str(
+      r#"
+      spam_db = "/var/lib/spam.db"
+      "#,
+    )
+    .unwrap();
+
+    assert_eq!(cfg.spam_db, Some(PathBuf::from("/var/lib/spam.db")));
+  }
+
+  #[test]
+  fn command_spam_db_overrides_global() {
+    let cfg: Config = toml::from_str(
+      r#"
+      spam_db = "global.db"
+
+      [commands.check]
+      spam_db = "local.db"
+      "#,
+    )
+    .unwrap();
+
+    assert_eq!(
+      cfg.for_command("check").spam_db,
+      Some(PathBuf::from("local.db"))
+    );
+    assert_eq!(
+      cfg.for_command("other").spam_db,
+      Some(PathBuf::from("global.db"))
     );
   }
 

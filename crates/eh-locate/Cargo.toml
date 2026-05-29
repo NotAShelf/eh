@@ -1,6 +1,6 @@
 [package]
 name                   = "eh-locate"
-description            = "crate to query nix-index and find packages from a binary"
+description            = "crate to query SPAM and find packages from a binary"
 version                = "0.1.0"
 edition.workspace      = true
 rust-version.workspace = true
@@ -10,8 +10,8 @@ repository.workspace   = true
 license.workspace      = true
 
 [dependencies]
-dialoguer.workspace = true
-dirs.workspace      = true
-eh-error.workspace  = true
-nix-index.workspace = true
-regex.workspace     = true
+dialoguer.workspace     = true
+regex.workspace         = true
+spam-db.workspace     = true
+eh-error.workspace      = true
+dirs.workspace          = true

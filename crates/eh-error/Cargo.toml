@@ -10,7 +10,7 @@ repository.workspace   = true
 license.workspace      = true
 
 [dependencies]
-nix-command.workspace = true
-nix-index.workspace   = true
-regex.workspace       = true
-thiserror.workspace   = true
+thiserror.workspace     = true
+nix-command.workspace   = true
+regex.workspace         = true
+spam-db.workspace       = true
