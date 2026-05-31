@@ -1,6 +1,5 @@
-use nix_command::{CommandKind, NixCommand, StdIo};
-
 use eh_error::{EhError, Result};
+use nix_command::{CommandKind, NixCommand, StdIo};
 
 use crate::nix_config::ApplyCommandConfig;
 
@@ -39,8 +38,14 @@ fn fetch_flake_inputs() -> Result<Vec<String>> {
 
 /// Prompt the user to select inputs via a multi-select dialog.
 fn prompt_input_selection(inputs: &[String]) -> Result<Vec<String>> {
-  let selections = dialoguer::MultiSelect::new()
-    .with_prompt("Select inputs to update")
+  let has_all = inputs.len() > 1;
+  let mut prompt =
+    dialoguer::MultiSelect::new().with_prompt("Select inputs to update");
+  if has_all {
+    prompt = prompt.item("all");
+  }
+
+  let selections = prompt
     .items(inputs)
     .interact()
     .map_err(|e| EhError::Io(std::io::Error::other(e)))?;
@@ -49,7 +54,19 @@ fn prompt_input_selection(inputs: &[String]) -> Result<Vec<String>> {
     return Err(EhError::UpdateCancelled);
   }
 
-  Ok(selections.iter().map(|&i| inputs[i].clone()).collect())
+  if inputs.len() > 1 && selections.contains(&0) {
+    return Ok(inputs.to_vec());
+  }
+
+  Ok(
+    selections
+      .iter()
+      .map(|&i| {
+        let input_index = if has_all { i - 1 } else { i };
+        inputs[input_index].clone()
+      })
+      .collect(),
+  )
 }
 
 /// Entry point for the `update` subcommand.
