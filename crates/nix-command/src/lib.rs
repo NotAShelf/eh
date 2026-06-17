@@ -1,4 +1,5 @@
 use std::{
+  ffi::{OsStr, OsString},
   io::{self, Read, Write},
   process::{Command, ExitStatus, Output, Stdio},
   sync::mpsc,
@@ -6,6 +7,7 @@ use std::{
   time::{Duration, Instant},
 };
 
+use subprocess::Exec;
 use thiserror::Error;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
@@ -28,11 +30,16 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CommandKind {
   Build,
+  Config,
+  Copy,
   Develop,
   Eval,
   Flake,
+  PathInfo,
+  Repl,
   Run,
   Shell,
+  Store,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -46,6 +53,16 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
   CommandSpec {
     name:             "build",
     print_build_logs: true,
+    interactive:      false,
+  },
+  CommandSpec {
+    name:             "config",
+    print_build_logs: false,
+    interactive:      false,
+  },
+  CommandSpec {
+    name:             "copy",
+    print_build_logs: false,
     interactive:      false,
   },
   CommandSpec {
@@ -64,6 +81,16 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
     interactive:      false,
   },
   CommandSpec {
+    name:             "path-info",
+    print_build_logs: false,
+    interactive:      false,
+  },
+  CommandSpec {
+    name:             "repl",
+    print_build_logs: false,
+    interactive:      true,
+  },
+  CommandSpec {
     name:             "run",
     print_build_logs: true,
     interactive:      true,
@@ -72,6 +99,11 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
     name:             "shell",
     print_build_logs: true,
     interactive:      true,
+  },
+  CommandSpec {
+    name:             "store",
+    print_build_logs: false,
+    interactive:      false,
   },
 ];
 
@@ -85,11 +117,16 @@ impl CommandKind {
   pub const fn spec(self) -> CommandSpec {
     match self {
       Self::Build => COMMAND_SPECS[0],
-      Self::Develop => COMMAND_SPECS[1],
-      Self::Eval => COMMAND_SPECS[2],
-      Self::Flake => COMMAND_SPECS[3],
-      Self::Run => COMMAND_SPECS[4],
-      Self::Shell => COMMAND_SPECS[5],
+      Self::Config => COMMAND_SPECS[1],
+      Self::Copy => COMMAND_SPECS[2],
+      Self::Develop => COMMAND_SPECS[3],
+      Self::Eval => COMMAND_SPECS[4],
+      Self::Flake => COMMAND_SPECS[5],
+      Self::PathInfo => COMMAND_SPECS[6],
+      Self::Repl => COMMAND_SPECS[7],
+      Self::Run => COMMAND_SPECS[8],
+      Self::Shell => COMMAND_SPECS[9],
+      Self::Store => COMMAND_SPECS[10],
     }
   }
 }
@@ -100,11 +137,16 @@ impl TryFrom<&str> for CommandKind {
   fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
     match value {
       "build" => Ok(Self::Build),
+      "config" => Ok(Self::Config),
+      "copy" => Ok(Self::Copy),
       "develop" => Ok(Self::Develop),
       "eval" => Ok(Self::Eval),
       "flake" => Ok(Self::Flake),
+      "path-info" => Ok(Self::PathInfo),
+      "repl" => Ok(Self::Repl),
       "run" => Ok(Self::Run),
       "shell" => Ok(Self::Shell),
+      "store" => Ok(Self::Store),
       command => {
         Err(UnknownCommand {
           command: command.to_string(),
@@ -167,10 +209,11 @@ fn read_pipe<R: Read>(
 }
 
 pub struct NixCommand {
-  kind:                    CommandKind,
-  binary:                  Option<String>,
-  args:                    Vec<String>,
-  env:                     Vec<(String, String)>,
+  kind:                    Option<CommandKind>,
+  binary:                  OsString,
+  global_args:             Vec<OsString>,
+  args:                    Vec<OsString>,
+  env:                     Vec<(OsString, OsString)>,
   impure:                  bool,
   print_build_logs:        bool,
   interactive:             bool,
@@ -184,51 +227,101 @@ impl NixCommand {
   pub fn new(kind: CommandKind) -> Self {
     let spec = kind.spec();
     Self {
-      kind,
-      binary: None,
-      args: Vec::new(),
-      env: Vec::new(),
-      impure: false,
-      print_build_logs: spec.print_build_logs,
-      interactive: spec.interactive,
-      eval_profiler_mode: None,
+      kind:                    Some(kind),
+      binary:                  OsString::from("nix"),
+      global_args:             Vec::new(),
+      args:                    Vec::new(),
+      env:                     Vec::new(),
+      impure:                  false,
+      print_build_logs:        spec.print_build_logs,
+      interactive:             spec.interactive,
+      eval_profiler_mode:      None,
       eval_profiler_frequency: None,
-      eval_profile_file: None,
+      eval_profile_file:       None,
     }
   }
 
   #[must_use]
-  pub fn arg<S: Into<String>>(mut self, arg: S) -> Self {
-    self.args.push(arg.into());
+  pub fn raw() -> Self {
+    Self {
+      kind:                    None,
+      binary:                  OsString::from("nix"),
+      global_args:             Vec::new(),
+      args:                    Vec::new(),
+      env:                     Vec::new(),
+      impure:                  false,
+      print_build_logs:        false,
+      interactive:             false,
+      eval_profiler_mode:      None,
+      eval_profiler_frequency: None,
+      eval_profile_file:       None,
+    }
+  }
+
+  #[must_use]
+  pub fn arg<S: AsRef<OsStr>>(mut self, arg: S) -> Self {
+    self.args.push(arg.as_ref().to_os_string());
+    self
+  }
+
+  #[must_use]
+  pub fn global_arg<S: AsRef<OsStr>>(mut self, arg: S) -> Self {
+    self.global_args.push(arg.as_ref().to_os_string());
+    self
+  }
+
+  #[must_use]
+  pub fn global_args<I>(mut self, args: I) -> Self
+  where
+    I: IntoIterator,
+    I::Item: AsRef<OsStr>,
+  {
+    self
+      .global_args
+      .extend(args.into_iter().map(|arg| arg.as_ref().to_os_string()));
     self
   }
 
   #[must_use]
   pub fn args_ref(mut self, args: &[String]) -> Self {
-    self.args.extend(args.iter().cloned());
+    self.args.extend(args.iter().map(OsString::from));
     self
   }
 
   #[must_use]
-  pub fn env<K: Into<String>, V: Into<String>>(
+  pub fn args<I>(mut self, args: I) -> Self
+  where
+    I: IntoIterator,
+    I::Item: AsRef<OsStr>,
+  {
+    self
+      .args
+      .extend(args.into_iter().map(|arg| arg.as_ref().to_os_string()));
+    self
+  }
+
+  #[must_use]
+  pub fn env<K: AsRef<OsStr>, V: AsRef<OsStr>>(
     mut self,
     key: K,
     value: V,
   ) -> Self {
-    self.env.push((key.into(), value.into()));
+    self
+      .env
+      .push((key.as_ref().to_os_string(), value.as_ref().to_os_string()));
     self
   }
 
   #[must_use]
-  pub fn envs<I, K, V>(mut self, env: I) -> Self
+  pub fn envs<I, K, V>(mut self, envs: I) -> Self
   where
     I: IntoIterator<Item = (K, V)>,
-    K: Into<String>,
-    V: Into<String>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
   {
-    self
-      .env
-      .extend(env.into_iter().map(|(k, v)| (k.into(), v.into())));
+    for (key, value) in envs {
+      self = self.env(key, value);
+    }
     self
   }
 
@@ -239,8 +332,8 @@ impl NixCommand {
   }
 
   #[must_use]
-  pub fn binary<S: Into<String>>(mut self, path: S) -> Self {
-    self.binary = Some(path.into());
+  pub fn binary<S: AsRef<OsStr>>(mut self, path: S) -> Self {
+    self.binary = path.as_ref().to_os_string();
     self
   }
 
@@ -275,34 +368,77 @@ impl NixCommand {
   }
 
   #[must_use]
-  pub fn argv(&self) -> Vec<String> {
-    let nix = self.binary.as_deref().unwrap_or("nix").to_string();
-    let mut argv = vec![nix, self.kind.as_str().to_string()];
+  pub fn with_required_env(mut self) -> Self {
+    const PRESERVE_ENV: &[&str] = &[
+      "LOCALE_ARCHIVE",
+      "PATH",
+      "NIX_SSHOPTS",
+      "HOME_MANAGER_BACKUP_EXT",
+      "NIX_CONFIG",
+      "NIX_PATH",
+      "NIX_REMOTE",
+      "NIX_SSL_CERT_FILE",
+      "NIX_USER_CONF_FILES",
+    ];
+
+    if let Ok(user) = std::env::var("USER") {
+      self = self.env("USER", user);
+    }
+    if let Ok(home) = std::env::var("HOME") {
+      self = self.env("HOME", home);
+    }
+
+    for key in PRESERVE_ENV {
+      if let Ok(value) = std::env::var(key) {
+        self = self.env(key, value);
+      }
+    }
+
+    for (key, value) in std::env::vars() {
+      if key.starts_with("NH_") {
+        self = self.env(key, value);
+      }
+    }
+
+    self
+  }
+
+  #[must_use]
+  pub fn argv(&self) -> Vec<OsString> {
+    let mut argv = vec![self.binary.clone()];
+    argv.extend(self.global_args.iter().cloned());
+    if let Some(kind) = self.kind {
+      argv.push(OsString::from(kind.as_str()));
+    }
     if self.print_build_logs
-      && !self.args.iter().any(|a| a == "--no-build-output")
+      && !self
+        .args
+        .iter()
+        .any(|a| a == OsStr::new("--no-build-output"))
     {
-      argv.push("--print-build-logs".to_string());
+      argv.push(OsString::from("--print-build-logs"));
     }
     if self.impure {
-      argv.push("--impure".to_string());
+      argv.push(OsString::from("--impure"));
     }
     if let Some(ref mode) = self.eval_profiler_mode {
-      argv.push("--eval-profiler".to_string());
-      argv.push(mode.clone());
+      argv.push(OsString::from("--eval-profiler"));
+      argv.push(OsString::from(mode));
     }
     if let Some(hz) = self.eval_profiler_frequency {
-      argv.push("--eval-profiler-frequency".to_string());
-      argv.push(hz.to_string());
+      argv.push(OsString::from("--eval-profiler-frequency"));
+      argv.push(OsString::from(hz.to_string()));
     }
     if let Some(ref path) = self.eval_profile_file {
-      argv.push("--eval-profile-file".to_string());
-      argv.push(path.clone());
+      argv.push(OsString::from("--eval-profile-file"));
+      argv.push(OsString::from(path));
     }
     argv.extend(self.args.iter().cloned());
     argv
   }
 
-  fn build_command(&self) -> Command {
+  #[must_use]
+  pub fn to_std_command(&self) -> Command {
     let argv = self.argv();
     let mut cmd = Command::new(&argv[0]);
     cmd.args(&argv[1..]);
@@ -312,8 +448,37 @@ impl NixCommand {
     cmd
   }
 
+  #[must_use]
+  pub fn to_exec(&self) -> Exec {
+    let argv = self.argv();
+    let mut cmd = Exec::cmd(&argv[0]).args(&argv[1..]);
+    for (key, value) in &self.env {
+      cmd = cmd.env(key, value);
+    }
+    cmd
+  }
+
+  #[must_use]
+  pub fn into_parts(
+    self,
+  ) -> (OsString, Vec<OsString>, Vec<(OsString, OsString)>) {
+    let mut argv = self.argv();
+    let binary = argv.remove(0);
+    (binary, argv, self.env)
+  }
+
+  #[must_use]
+  pub fn nix_store() -> Self {
+    Self::raw().binary("nix-store")
+  }
+
+  #[must_use]
+  pub fn nix_instantiate() -> Self {
+    Self::raw().binary("nix-instantiate")
+  }
+
   pub fn run_with_logs(&self, mut interceptor: StdIo) -> Result<ExitStatus> {
-    let mut cmd = self.build_command();
+    let mut cmd = self.to_std_command();
 
     if self.interactive {
       return Ok(
@@ -361,7 +526,7 @@ impl NixCommand {
   }
 
   pub fn output(&self) -> Result<Output> {
-    let mut cmd = self.build_command();
+    let mut cmd = self.to_std_command();
     if self.interactive {
       return Ok(
         cmd
@@ -389,15 +554,22 @@ impl NixCommand {
 
   fn command_failed(&self) -> Error {
     Error::CommandFailed {
-      command: self.kind.as_str().to_string(),
+      command: self.command_name(),
     }
   }
 
   fn timeout(&self) -> Error {
     Error::Timeout {
-      command:  self.kind.as_str().to_string(),
+      command:  self.command_name(),
       duration: DEFAULT_TIMEOUT,
     }
+  }
+
+  fn command_name(&self) -> String {
+    self.kind.map_or_else(
+      || self.binary.to_string_lossy().into_owned(),
+      |kind| kind.as_str().to_string(),
+    )
   }
 }
 
@@ -416,9 +588,9 @@ mod tests {
   #[test]
   fn schema_rejects_unknown_commands() {
     assert_eq!(
-      CommandKind::try_from("repl"),
+      CommandKind::try_from("doctor"),
       Err(UnknownCommand {
-        command: "repl".to_string(),
+        command: "doctor".to_string(),
       })
     );
   }
@@ -480,5 +652,34 @@ mod tests {
       "/tmp/nix.profile",
       "nixpkgs#hello"
     ]);
+  }
+
+  #[test]
+  fn global_args_are_inserted_before_subcommand() {
+    let argv = NixCommand::new(CommandKind::Eval)
+      .global_args(["--extra-experimental-features", "nix-command flakes"])
+      .arg("--raw")
+      .arg("nixpkgs#hello")
+      .argv();
+    assert_eq!(argv, [
+      "nix",
+      "--extra-experimental-features",
+      "nix-command flakes",
+      "eval",
+      "--raw",
+      "nixpkgs#hello"
+    ]);
+  }
+
+  #[test]
+  fn raw_command_omits_subcommand() {
+    let argv = NixCommand::raw().arg("--version").argv();
+    assert_eq!(argv, ["nix", "--version"]);
+  }
+
+  #[test]
+  fn alternate_binary_omits_nix_subcommand() {
+    let argv = NixCommand::nix_store().arg("--optimise").argv();
+    assert_eq!(argv, ["nix-store", "--optimise"]);
   }
 }
