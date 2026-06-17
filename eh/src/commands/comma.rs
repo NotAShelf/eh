@@ -9,7 +9,7 @@ pub fn handle_comma(
   ask: bool,
 ) -> Result<i32> {
   let binary = args.first().ok_or(EhError::MissingBinary)?;
-  let installable = get_package_from_index(binary)?;
+  let installable = get_package_from_index(binary, cfg.get_spam_db())?;
   let mut shell_args = Vec::with_capacity(args.len() + 2);
   shell_args.push(format!("nixpkgs#{installable}"));
   shell_args.push("-c".to_string());

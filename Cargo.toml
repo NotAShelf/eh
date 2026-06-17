@@ -21,6 +21,7 @@ eh-error    = { path = "./crates/eh-error/", version = "0.1.0" }
 eh-locate   = { path = "./crates/eh-locate/", version = "0.1.0" }
 eh-log      = { path = "./crates/eh-log", version = "1.0.1" }
 nix-command = { path = "./crates/nix-command", version = "0.2.3" }
+spam-db     = { git = "https://github.com/feel-co/spam", branch = "notashelf/push-pxvulyykuopn", version = "0.2.4" }
 
 clap          = { default-features = false, features = [ "std", "help", "derive" ], version = "4.6.1" }
 clap_complete = "4.6.3"
