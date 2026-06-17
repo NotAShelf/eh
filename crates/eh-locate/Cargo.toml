@@ -10,8 +10,8 @@ repository.workspace   = true
 license.workspace      = true
 
 [dependencies]
-dialoguer.workspace     = true
-regex.workspace         = true
-nix-index.workspace     = true
-eh-error.workspace      = true
-dirs.workspace          = true
+dialoguer.workspace = true
+dirs.workspace      = true
+eh-error.workspace  = true
+nix-index.workspace = true
+regex.workspace     = true
