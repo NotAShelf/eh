@@ -4,13 +4,12 @@ use std::{
   sync::LazyLock,
 };
 
+use eh_error::{EhError, Result};
 use eh_log::log_info;
 use regex::Regex;
 use tempfile::NamedTempFile;
 use walkdir::WalkDir;
 use yansi::Paint;
-
-use eh_error::{EhError, Result};
 
 const MAX_DIR_DEPTH: usize = 3;
 

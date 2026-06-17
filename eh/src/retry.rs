@@ -1,7 +1,7 @@
 use std::io::{IsTerminal, Write};
 
-use eh_log::{log_debug, log_info, log_warn};
 use eh_error::{EhError, Result};
+use eh_log::{log_debug, log_info, log_warn};
 use nix_command::{CommandKind, NixCommand, StdIo};
 use yansi::Paint;
 

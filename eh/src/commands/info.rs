@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use eh_log::{log_error, log_info};
 use eh_error::{EhError, Result};
+use eh_log::{log_error, log_info};
 use nix_command::{CommandKind, NixCommand};
 use serde::Deserialize;
 use yansi::Paint;

@@ -1,6 +1,5 @@
-use nix_command::CommandKind;
-
 use eh_error::{EhError, Result};
+use nix_command::CommandKind;
 
 use crate::{
   hash::{HashExtractor, NixFileFixer},

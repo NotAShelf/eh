@@ -1,12 +1,12 @@
 use std::{collections::BTreeSet, env::var_os, io::IsTerminal, path::PathBuf};
 
+use eh_error::{EhError, Result};
 use nix_index::{
   database::Reader,
   files::{FileTreeEntry, FileType},
   package::StorePath,
 };
 use regex::bytes::Regex;
-use eh_error::{EhError, Result};
 
 pub fn get_package_from_index(binary: &str) -> Result<String> {
   if binary.trim().is_empty() || binary.contains('/') {

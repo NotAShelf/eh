@@ -1,9 +1,7 @@
-use crate::{
-  commands::handle_default_nix_command,
-};
 use eh_error::{EhError, Result};
 use eh_locate::get_package_from_index;
 
+use crate::commands::handle_default_nix_command;
 
 pub fn handle_comma(
   args: &[String],
