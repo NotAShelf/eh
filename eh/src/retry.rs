@@ -209,9 +209,14 @@ pub fn handle_nix_with_retry(
     CommandKind::Build | CommandKind::Run | CommandKind::Shell => {
       pre_evaluate(args)?
     },
-    CommandKind::Develop | CommandKind::Eval | CommandKind::Flake => {
-      RetryAction::None
-    },
+    CommandKind::Config
+    | CommandKind::Copy
+    | CommandKind::Develop
+    | CommandKind::Eval
+    | CommandKind::Flake
+    | CommandKind::PathInfo
+    | CommandKind::Repl
+    | CommandKind::Store => RetryAction::None,
   };
   log_debug!("checking {}", command_display(kind.as_str(), args));
   if let Some((env_var, reason)) = pre_eval_result.env_override() {
