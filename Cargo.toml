@@ -10,17 +10,17 @@ homepage     = "https://github.com/notashelf/eh"
 license      = "MPL-2.0"
 readme       = true
 repository   = "https://github.com/notashelf/eh"
-rust-version = "1.94.0"
-version      = "1.0.0"
+rust-version = "1.95.0"
+version      = "1.0.1"
 
 [workspace.dependencies]
 # Workspace members
 eh          = { path = "./eh", version = "1.0.0" }
-eh-config   = { path = "./crates/eh-config", version = "1.0.0" }
+eh-config   = { path = "./crates/eh-config", version = "1.0.1" }
 eh-error    = { path = "./crates/eh-error/", version = "0.1.0" }
 eh-locate   = { path = "./crates/eh-locate/", version = "0.1.0" }
-eh-log      = { path = "./crates/eh-log", version = "1.0.0" }
-nix-command = { path = "./crates/nix-command", version = "0.2.2" }
+eh-log      = { path = "./crates/eh-log", version = "1.0.1" }
+nix-command = { path = "./crates/nix-command", version = "0.2.3" }
 
 clap          = { default-features = false, features = [ "std", "help", "derive" ], version = "4.6.1" }
 clap_complete = "4.6.3"

@@ -462,7 +462,7 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
 name = "eh"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "clap",
  "clap_complete",
@@ -483,7 +483,7 @@ dependencies = [
 
 [[package]]
 name = "eh-config"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "dirs",
  "eh-log",
@@ -514,7 +514,7 @@ dependencies = [
 
 [[package]]
 name = "eh-log"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "yansi",
 ]
@@ -3020,7 +3020,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "clap",
  "clap_complete",
