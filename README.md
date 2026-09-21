@@ -69,14 +69,27 @@ pick which inputs to update.
 After enabling shell aliases via the NixOS module or Home Manager, you can use:
 
 ```bash
-ns nixpkgs#hello           # equivalent to: nix shell nixpkgs#hello
-nr nixpkgs#cowsay "Hello!" # nix run nixpkgs#cowsay
-nb .#myPackage             # nix build .#myPackage
-nd .#myPackage             # nix develop .#myPackage
-dev .#myPackage            # nix develop .#myPackage (alias for nd)
-ni nixpkgs#hello           # nix eval nixpkgs#hello.meta
-nu                         # nix flake update
-, glxgears                 # nix shell nixpkgs#mesa-demos -c glxgears
+# Conventional aliases
+$ ns nixpkgs#hello           # equivalent to: nix shell nixpkgs#hello
+$ nr nixpkgs#cowsay "Hello!" # nix run nixpkgs#cowsay
+$ nb .#myPackage             # nix build .#myPackage
+$ nd .#myPackage             # nix develop .#myPackage
+$ dev .#myPackage            # nix develop .#myPackage (alias for nd)
+$ ni nixpkgs#hello           # nix eval nixpkgs#hello.meta
+$ nu                         # nix flake update
+
+# An alternative implementation of Comma powered by eh.
+$ , glxgears                 # nix shell nixpkgs#mesa-demos -c glxgears
+```
+
+The `comma` command queries the package scope in `$XDG_CACHE_HOME/spam/spam.db`
+through `spam-db`; set `SPAM_DATABASE` to use a different path. Build the index
+with:
+
+```bash
+# Generate your own index. Note that this is RAM-intensive, and it is often times
+# a better idea to get 
+$ spam index --nixpkgs '<nixpkgs>' --scope pkg --output ~/.cache/spam/spam.db
 ```
 
 ### Shell Completions
