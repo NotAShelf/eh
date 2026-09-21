@@ -1,0 +1,19 @@
+name: Rust
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7.0.1
+
+    - name: Install Nix
+      uses: cachix/install-nix-action@v31.11.1
+      with:
+        github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Run build
+      run: nix develop --command cargo build --locked --all-targets
+
+    - name: Run tests
+      run: nix develop --command cargo test --locked
