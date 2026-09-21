@@ -8,8 +8,8 @@ pub enum EhError {
   #[error("invalid binary name '{binary}'")]
   InvalidBinaryName { binary: String },
 
-  #[error("nix-index database error: {0}")]
-  NixIndex(#[from] nix_index::database::Error),
+  #[error(transparent)]
+  SpamDb(#[from] spam_db::Error),
 
   #[error("no package found providing binary '{binary}'")]
   BinaryNotFound { binary: String },
@@ -93,7 +93,7 @@ impl EhError {
       Self::InvalidEvalInput => 16,
       Self::MissingBinary => 17,
       Self::InvalidBinaryName { .. } => 18,
-      Self::NixIndex(_) => 19,
+      Self::SpamDb(_) => 19,
       Self::BinaryNotFound { .. } => 20,
       Self::AmbiguousBinary { .. } => 21,
     }
@@ -108,14 +108,11 @@ impl EhError {
       Self::InvalidBinaryName { .. } => {
         Some("pass the executable name without a path")
       },
-      Self::NixIndex(_) => {
-        Some("run `nix-index` to generate or refresh the local database")
+      Self::SpamDb(_) => {
+        Some("build a package index with `spam index` or set SPAM_DATABASE")
       },
       Self::BinaryNotFound { .. } => {
-        Some(
-          "run `nix-index` to refresh the local database or check the binary \
-           name",
-        )
+        Some("refresh the SPAM database or check the binary name")
       },
       Self::AmbiguousBinary { .. } => {
         Some(

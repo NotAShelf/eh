@@ -11,6 +11,6 @@ license.workspace      = true
 
 [dependencies]
 nix-command.workspace = true
-nix-index.workspace   = true
 regex.workspace       = true
+spam-db.workspace    = true
 thiserror.workspace   = true

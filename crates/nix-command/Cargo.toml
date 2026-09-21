@@ -10,5 +10,4 @@ repository.workspace   = true
 license.workspace      = true
 
 [dependencies]
-subprocess.workspace = true
 thiserror.workspace  = true

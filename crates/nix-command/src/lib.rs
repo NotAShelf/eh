@@ -7,7 +7,6 @@ use std::{
   time::{Duration, Instant},
 };
 
-use subprocess::Exec;
 use thiserror::Error;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(300);
@@ -444,16 +443,6 @@ impl NixCommand {
     cmd.args(&argv[1..]);
     for (k, v) in &self.env {
       cmd.env(k, v);
-    }
-    cmd
-  }
-
-  #[must_use]
-  pub fn to_exec(&self) -> Exec {
-    let argv = self.argv();
-    let mut cmd = Exec::cmd(&argv[0]).args(&argv[1..]);
-    for (key, value) in &self.env {
-      cmd = cmd.env(key, value);
     }
     cmd
   }

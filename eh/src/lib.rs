@@ -31,7 +31,7 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
-  /// Runa binary from nixpkgs via nix-index
+  /// Run a binary from nixpkgs via SPAM
   Comma {
     #[arg(short, long, default_value = "false")]
     ask:      bool,
