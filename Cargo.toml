@@ -22,25 +22,25 @@ eh-locate   = { path = "./crates/eh-locate/", version = "0.1.0" }
 eh-log      = { path = "./crates/eh-log", version = "1.0.1" }
 nix-command = { path = "./crates/nix-command", version = "0.2.3" }
 
-clap          = { default-features = false, features = [ "std", "help", "derive" ], version = "4.6.1" }
-clap_complete = "4.6.3"
+clap          = { default-features = false, features = [ "std", "help", "derive" ], version = "4.6.7" }
+clap_complete = "4.6.11"
 dialoguer     = { default-features = false, version = "0.12.0" }
-dirs          = "6.0.0"
+dirs          = "7.0.0"
 nix-index     = "0.1.10"
-regex         = "1.12.3"
-serde         = { features = [ "derive" ], version = "1.0.228" }
-serde_json    = "1.0.149"
-subprocess    = "1.0.3"
+regex         = "1.13.1"
+serde         = { features = [ "derive" ], version = "1.0.229" }
+serde_json    = "1.0.151"
+subprocess    = "1.2.1"
 tempfile      = "3.27.0"
-textwrap      = "0.16.2"
-thiserror     = "2.0.18"
-toml          = { default-features = false, features = [ "parse", "serde" ], version = "1.1.2" }
+textwrap      = "0.16.4"
+thiserror     = "2.0.20"
+toml          = { default-features = false, features = [ "parse", "serde" ], version = "1.1.6" }
 walkdir       = "2.5.0"
 yansi         = "1.0.1"
 
 [profile.release]
 codegen-units = 1
-lto           = true
-opt-level     = "z"
+lto           = "thin"
+opt-level     = 3
 panic         = "abort"
 strip         = true
