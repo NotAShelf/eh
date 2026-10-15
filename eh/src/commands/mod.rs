@@ -6,8 +6,9 @@ use crate::{
   retry::{NixErrorClassifier, handle_nix_with_retry},
 };
 
-pub mod comma;
+pub mod exec;
 pub mod info;
+pub mod locate;
 pub mod update;
 
 pub fn handle_default_nix_command(
