@@ -2,7 +2,7 @@ use std::io::{IsTerminal, Write};
 
 use eh_error::{EhError, Result};
 use eh_log::{log_debug, log_info, log_warn};
-use nix_command::{CommandKind, NixCommand, StdIo};
+use nix_command::{CommandKind, NixCommand};
 use yansi::Paint;
 
 use crate::{
@@ -84,7 +84,7 @@ fn run_nix_command(
   if interactive {
     log_debug!("entering {}", command_display(kind.as_str(), args));
   }
-  Ok(cmd.run_with_logs(StdIo)?.code().unwrap_or(1))
+  Ok(cmd.run_with_logs()?.code().unwrap_or(1))
 }
 
 fn command_display(subcommand: &str, args: &[String]) -> String {

@@ -1,5 +1,5 @@
 use eh_error::{EhError, Result};
-use nix_command::{CommandKind, NixCommand, StdIo};
+use nix_command::{CommandKind, NixCommand};
 
 use crate::nix_config::ApplyCommandConfig;
 
@@ -97,7 +97,7 @@ pub fn handle_update(
 
   eh_log::log_info!("updating inputs: {}", selected.join(", "));
 
-  let status = cmd.run_with_logs(StdIo)?;
+  let status = cmd.run_with_logs()?;
   Ok(status.code().unwrap_or(1))
 }
 
