@@ -203,10 +203,8 @@ impure = false
 
 ## License
 
-<!--markdownlint-disable MD059-->
+[provided here]: https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12
 
-This project is made available under Mozilla Public License (MPL) version 2.0.
-See [LICENSE](LICENSE) for more details on the exact conditions. An online copy
-is provided [here](https://www.mozilla.org/en-US/MPL/2.0/).
-
-<!--markdownlint-enable MD059-->
+This project is made available under the European Union Public Licence (EUPL)
+version 1.2. See [LICENSE](LICENSE) for more details on the exact conditions. An
+online copy is [provided here].

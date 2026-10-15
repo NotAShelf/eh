@@ -60,7 +60,7 @@ in
       description = "Ergonomic Nix CLI helper";
       homepage = "https://github.com/notashelf/eh";
       maintainers = with lib.maintainers; [NotAShelf];
-      license = lib.licenses.mpl20;
+      license = lib.licenses.eupl12;
       mainProgram = "eh";
     };
   })
