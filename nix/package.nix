@@ -4,6 +4,7 @@
   stdenv,
   installShellFiles,
   versionCheckHook,
+  withComma ? false,
 }: let
   cargoManifest = lib.importTOML ../Cargo.toml;
 in
@@ -43,14 +44,15 @@ in
     nativeBuildInputs = [installShellFiles];
 
     postInstall = ''
-      # Install required files with the 'dist' task
+      # Install multicall binaries; comma is opt-in.
       cargo xtask multicall \
         --bin-dir $out/bin \
-        --main-binary $out/bin/eh
+        --main-binary $out/bin/eh ${lib.optionalString withComma "--with-comma"}
 
       # Generate shell completions and install them.
       for shell in bash zsh fish; do
-        cargo xtask completions $shell
+        cargo xtask completions $shell \
+          --main-binary $out/bin/eh ${lib.optionalString withComma "--with-comma"}
       done
 
       installShellCompletion completions/*

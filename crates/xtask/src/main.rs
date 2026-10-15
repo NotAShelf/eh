@@ -25,6 +25,10 @@ enum Command {
     /// Path to the main binary.
     #[arg(long, default_value = "target/release/eh")]
     main_binary: PathBuf,
+
+    /// Install the opt-in comma-compatible frontend.
+    #[arg(long)]
+    with_comma: bool,
   },
   /// Generate shell completion scripts
   Completions {
@@ -34,6 +38,14 @@ enum Command {
     /// Directory to output completion files
     #[arg(long, default_value = "completions")]
     output_dir: PathBuf,
+
+    /// Path to the main binary, alongside the installed comma frontend.
+    #[arg(long, default_value = "target/release/eh")]
+    main_binary: PathBuf,
+
+    /// Generate completions for the opt-in comma-compatible frontend.
+    #[arg(long)]
+    with_comma: bool,
   },
 }
 
@@ -71,14 +83,24 @@ fn main() {
     Command::Multicall {
       bin_dir,
       main_binary,
+      with_comma,
     } => {
-      if let Err(error) = create_multicall_binaries(&bin_dir, &main_binary) {
+      if let Err(error) =
+        create_multicall_binaries(&bin_dir, &main_binary, with_comma)
+      {
         eprintln!("error creating multicall binaries: {error}");
         process::exit(1);
       }
     },
-    Command::Completions { shell, output_dir } => {
-      if let Err(error) = generate_completions(shell, &output_dir) {
+    Command::Completions {
+      shell,
+      output_dir,
+      main_binary,
+      with_comma,
+    } => {
+      if let Err(error) =
+        generate_completions(shell, &output_dir, &main_binary, with_comma)
+      {
         eprintln!("error generating completions: {error}");
         process::exit(1);
       }
@@ -89,6 +111,7 @@ fn main() {
 fn create_multicall_binaries(
   bin_dir: &Path,
   main_binary: &Path,
+  with_comma: bool,
 ) -> Result<(), Box<dyn error::Error>> {
   println!("creating multicall binaries...");
 
@@ -113,6 +136,10 @@ fn create_multicall_binaries(
   let bin_path = Path::new(bin_dir);
 
   for binary in multicall_binaries {
+    if matches!(binary, Binary::Comma) && !with_comma {
+      continue;
+    }
+
     let target_path = bin_path.join(binary.name());
 
     if target_path.exists() {
@@ -156,6 +183,8 @@ fn create_multicall_binaries(
 fn generate_completions(
   shell: Shell,
   output_dir: &Path,
+  main_binary: &Path,
+  with_comma: bool,
 ) -> Result<(), Box<dyn error::Error>> {
   println!("generating {shell} completions...");
 
@@ -172,7 +201,7 @@ fn generate_completions(
   println!("completion file generated: {}", completion_file.display());
 
   // Create symlinks for multicall binaries
-  let multicall_names = [",", "dev", "nb", "nd", "ni", "nr", "ns", "nu"];
+  let multicall_names = ["dev", "nb", "nd", "ni", "nr", "ns", "nu"];
   for name in &multicall_names {
     let symlink_path = output_dir.join(format!("{name}.{shell}"));
     if symlink_path.exists() {
@@ -191,6 +220,31 @@ fn generate_completions(
       fs::copy(&completion_file, &symlink_path)?;
       println!("completion copy created: {}", symlink_path.display());
     }
+  }
+
+  if with_comma {
+    let comma_binary = main_binary.with_file_name(",");
+    let output = process::Command::new(&comma_binary)
+      .arg("--print-completions")
+      .arg(shell.to_string())
+      .output()?;
+    if !output.status.success() {
+      return Err(
+        format!(
+          "comma completion generation failed ({}): {}",
+          output.status,
+          String::from_utf8_lossy(&output.stderr),
+        )
+        .into(),
+      );
+    }
+
+    let completion_file = output_dir.join(format!(",.{shell}"));
+    if completion_file.symlink_metadata().is_ok() {
+      fs::remove_file(&completion_file)?;
+    }
+    fs::write(&completion_file, output.stdout)?;
+    println!("completion file generated: {}", completion_file.display());
   }
 
   println!("completions generated successfully!");
