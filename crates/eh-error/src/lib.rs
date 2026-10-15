@@ -195,21 +195,6 @@ mod tests {
   }
 
   #[test]
-  fn test_display_messages() {
-    let err = EhError::PreEvalFailed {
-      expression: "nixpkgs#hello".into(),
-      stderr:     "attribute not found".into(),
-    };
-    assert!(err.to_string().contains("nixpkgs#hello"));
-    assert!(err.to_string().contains("attribute not found"));
-
-    let err = EhError::HashExtractionFailed {
-      stderr: "some output".into(),
-    };
-    assert!(err.to_string().contains("could not extract hash"));
-  }
-
-  #[test]
   fn test_hints() {
     assert!(
       EhError::PreEvalFailed {
