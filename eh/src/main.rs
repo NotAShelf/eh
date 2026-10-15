@@ -5,6 +5,7 @@ use eh::{Cli, Command, CommandFactory, Parser, Shell as EhShell};
 use eh_error::Result;
 use yansi::Paint;
 
+mod comma;
 mod commands;
 mod eval;
 mod hash;
@@ -48,7 +49,6 @@ fn handle_command(
     "run" | "shell" | "build" | "develop" => {
       commands::handle_default_nix_command(command, &all_args, &cmd_cfg, ask)
     },
-    "comma" => commands::comma::handle_comma(&all_args, &cmd_cfg, ask),
     _ => unreachable!(),
   }
 }
@@ -57,6 +57,12 @@ fn dispatch_multicall(
   app_name: &str,
   args: impl IntoIterator<Item = String>,
 ) -> Option<Result<i32>> {
+  // The comma frontend has its own parser. Never scan its child arguments for
+  // eh verbosity, help or version flags.
+  if matches!(app_name, "," | "comma") {
+    return Some(crate::comma::run(args));
+  }
+
   let mut verbosity = 0i8;
   let mut rest = Vec::new();
   for arg in args {
@@ -78,7 +84,6 @@ fn dispatch_multicall(
     "nd" | "dev" => "develop",
     "ni" => "info",
     "nu" => "update",
-    "," => "comma",
     _ => return None,
   };
 
@@ -90,17 +95,10 @@ fn dispatch_multicall(
       format!("eh {subcommand}").bold()
     );
     eprintln!("  {} {app_name} [args...]", "usage:".green().bold());
-    if subcommand == "comma" {
-      eprintln!(
-        "  Resolves the first argument with SPAM, then runs it via '{}'.",
-        "nix shell <installable> -c <binary>".dim()
-      );
-    } else {
-      eprintln!(
-        "  All arguments are forwarded to '{}'.",
-        format!("nix {subcommand}").dim()
-      );
-    }
+    eprintln!(
+      "  All arguments are forwarded to '{}'.",
+      format!("nix {subcommand}").dim()
+    );
     return Some(Ok(0));
   }
 
@@ -129,11 +127,12 @@ fn run_app() -> Result<i32> {
   eh_log::set_verbosity(cli.verbose as i8 - cli.quiet as i8);
 
   match cli.command {
-    Some(Command::Comma {
-      ask,
-      args,
-      nix_args,
-    }) => handle_command("comma", args, nix_args, ask),
+    Some(Command::Exec(args)) => {
+      let cfg = eh_config::load().for_command("exec");
+      commands::exec::handle_exec(&args.args, &cfg, args.ask)
+    },
+
+    Some(Command::Locate(args)) => commands::locate::handle_locate(args),
 
     Some(Command::Run {
       ask,

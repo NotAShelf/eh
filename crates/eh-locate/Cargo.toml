@@ -13,4 +13,5 @@ license.workspace      = true
 dialoguer.workspace = true
 dirs.workspace      = true
 eh-error.workspace  = true
+regex.workspace     = true
 spam-db.workspace   = true

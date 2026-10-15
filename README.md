@@ -52,67 +52,244 @@ eh build nixpkgs#steam --ask
 In non-interactive mode (no TTY), `--ask` raises an error rather than silently
 skipping. Without `--ask`, prompts only appear in TTY mode.
 
+## Installation
+
+The package installs `eh` and the `nb`, `ns`, `nr`, `nd`, `dev`, `ni`, and `nu`
+multicall binaries. Installing `,` is optional.
+
+### NixOS
+
+Add eh to your system flake, import its NixOS module, and enable it. Pass
+`inputs` through `specialArgs` so your configuration can refer to the module:
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    eh.url = "github:notashelf/eh";
+  };
+
+  outputs = inputs @ {nixpkgs, ...}: {
+    nixosConfigurations.myHost = nixpkgs.lib.nixosSystem {
+      specialArgs = {inherit inputs;};
+      modules = [./configuration.nix];
+    };
+  };
+}
+```
+
+In `configuration.nix`, alongside your existing system settings:
+
+```nix
+{inputs, ...}: {
+  imports = [inputs.eh.nixosModules.default];
+  programs.eh.enable = true;
+}
+```
+
+Remember to replace `myHost` with your system's configuration name.
+
+### Other Nix installations
+
+On non-NixOS systems, install eh in your user profile:
+
+```bash
+# Install eh and its multicall binaries.
+$ nix profile install github:notashelf/eh
+```
+
+You can also try eh without installing it:
+
+```bash
+# Show eh's help without adding it to your profile.
+$ nix run github:notashelf/eh -- --help
+```
+
+### Build from source
+
+From a checkout of this repository, build eh and install it in `~/.local/bin`:
+
+```bash
+# Build the release binary.
+$ cargo build --release --bin eh
+
+# Install eh, then create the multicall binaries beside it.
+$ install -Dm755 target/release/eh "$HOME/.local/bin/eh"
+$ cargo xtask multicall --bin-dir "$HOME/.local/bin" \
+    --main-binary "$HOME/.local/bin/eh"
+```
+
+Put `~/.local/bin` on your `PATH`.
+
+### Optional comma replacement
+
+eh does not install `,` by default. To replace upstream comma with eh's version,
+add this setting to your NixOS configuration after enabling eh:
+
+```nix
+programs.eh.comma.enable = true;
+```
+
+If you install the package without the module, use its `withComma` override:
+
+```nix
+environment.systemPackages = [
+  (inputs.eh.packages.${pkgs.stdenv.hostPlatform.system}.default.override {
+    withComma = true;
+  })
+];
+```
+
+For a source installation, add `--with-comma` to the `cargo xtask multicall`
+command above. Remove upstream comma from your installed packages before
+enabling this option, since both packages provide `,`.
+
 ## Shell Aliases
 
 By default, you may run the `eh` binary akin to Nix with a nicer interface. The
 supported Nix commands, i.e., nix `build`, `shell`, `run` and `develop` become
-`eh build`, `eh shell`, `eh run` and `eh develop`. However, it is possible to
-symlink the `eh` binary to `,`, `nb`, `ns`, `nr`, `nd`, `dev`, `ni`, and `nu` to
-invoke a specific feature. For example, `,` aliases to `eh comma`, `nb` will act
-as `eh build`, `nr` will be `eh run`, and `dev` is an alias for `nd`.
+`eh build`, `eh shell`, `eh run` and `eh develop`. You can also invoke a
+specific command through the installed multicall binaries. For example, `nb`
+will act as `eh build`, `nr` will be `eh run`, and `dev` is an alias for `nd`.
 
 One special example is `eh update`, which is aliased to `nu`, that handles
 interactive Nix flake updates. It is special in the sense that the usage is
 entirely different from its Nix counterpart, where you get to _interactively_
 pick which inputs to update.
 
-After enabling shell aliases via the NixOS module or Home Manager, you can use:
+With the multicall binaries on your `PATH`, you can use:
 
 ```bash
-# Conventional aliases
-$ ns nixpkgs#hello           # equivalent to: nix shell nixpkgs#hello
-$ nr nixpkgs#cowsay "Hello!" # nix run nixpkgs#cowsay
-$ nb .#myPackage             # nix build .#myPackage
-$ nd .#myPackage             # nix develop .#myPackage
-$ dev .#myPackage            # nix develop .#myPackage (alias for nd)
-$ ni nixpkgs#hello           # nix eval nixpkgs#hello.meta
-$ nu                         # nix flake update
-
-# An alternative implementation of Comma powered by eh.
-$ , glxgears                 # nix shell nixpkgs#mesa-demos -c glxgears
+$ ns nixpkgs#hello           # equivalent to: eh shell nixpkgs#hello
+$ nr nixpkgs#cowsay "Hello!" # eh run nixpkgs#cowsay
+$ nb .#myPackage             # eh build .#myPackage
+$ nd .#myPackage             # eh develop .#myPackage
+$ dev .#myPackage            # eh develop .#myPackage (same as nd)
+$ ni nixpkgs#hello           # eh info nixpkgs#hello
+$ nu                         # interactive flake input updates
 ```
 
-The `comma` command queries the package scope in `$XDG_CACHE_HOME/spam/spam.db`
-through `spam-db`; set `SPAM_DATABASE` to use a different path. Build the index
-with:
+### Execute a binary
+
+`eh exec` finds a package containing the binary and runs it through Nix:
 
 ```bash
-# Generate your own index. Note that this is RAM-intensive, and it is often times
-# a better idea to get 
+# Find and run glxgears.
+$ eh exec glxgears
+# Pass --help to hello, with confirmation before retries or fixes.
+$ eh exec --ask hello --help
+```
+
+Put eh options before the binary name. Everything after it goes to the program,
+including `--help`, `-v`, and `--`. Use `--ask` to ask before retries and hash
+fixes. `eh exec` reads the `exec` settings in your eh config.
+
+### Locate files
+
+`eh locate` searches file paths in the SPAM index. Patterns are literal unless
+you pass `--regex`:
+
+```bash
+# Find executable files named hello.
+$ eh locate /bin/hello --whole-name --type x
+# Search with a regular expression.
+$ eh locate 'bin/(hello|cowsay)$' --regex
+# Print matching package names only.
+$ eh locate hello --package hello --minimal
+```
+
+- `-r` / `--regex` treats path and package patterns as regular expressions.
+- `-p` / `--package` filters package names.
+- `-t` / `--type` filters by file type. Use `r` for regular files, `x` for
+  executables, `d` for directories, or `s` for symlinks. Repeat it to include
+  more than one type.
+- `--at-root` matches from the start of the output-relative path.
+- `-w` / `--whole-name` requires the match to end at the end of the path.
+- `--minimal` prints each matching package name once.
+- `--no-group` includes paths below a matched directory.
+- `--db FILE` reads a different database file.
+
+### SPAM database
+
+`eh exec`, `eh locate`, and `,` need a SPAM package index. They cannot read a
+nix-index database. Set `SPAM_DATABASE` to the database file, or put it at
+`$XDG_CACHE_HOME/spam/spam.db`. Without `XDG_CACHE_HOME`, the default is
+`~/.cache/spam/spam.db`.
+
+To generate an index:
+
+```bash
+# Generating an index is RAM-intensive.
 $ spam index --nixpkgs '<nixpkgs>' --scope pkg --output ~/.cache/spam/spam.db
 ```
+
+### Comma compatibility
+
+Once you enable comma support, use `,` as you would upstream comma:
+
+```bash
+# Run a binary by name.
+$ , glxgears
+# Ask before running hello and pass it --help.
+$ , --ask hello --help
+# List providers or print the executable path.
+$ , --print-packages hello
+$ , --print-path hello
+```
+
+`,` accepts upstream comma's options, including `--install`, `--shell`,
+`--picker`, `--nixpkgs-flake`, `--ask`, `--print-packages`, `--print-path`,
+`--cache-level`, `--empty-cache`, and `--delete-entry`. It also has `man` and
+completion commands. Run `, --help` for the full list.
+
+It reads these environment variables instead of eh's config:
+
+- `COMMA_PICKER` selects the package picker. The default is `fzy`.
+- `COMMA_NIXPKGS_FLAKE` selects the Nixpkgs flake. The default is `nixpkgs`.
+- `COMMA_ASK_TO_CONFIRM` asks before running the program.
+- `COMMA_CACHING` sets the cache level, like `--cache-level`. The default is
+  `2`.
+
+Cache level `0` disables caching. Level `1` remembers package choices. Level `2`
+also remembers executable paths and rebuilds if garbage collection removed them.
+The cache lives at `$XDG_CACHE_HOME/eh/comma/choices-v1.json`, or under
+`~/.cache` when `XDG_CACHE_HOME` is unset. It does not read upstream comma's
+cache.
+
+Like `eh exec`, `,` uses SPAM for package lookup and passes arguments after the
+binary name to the program unchanged.
 
 ### Shell Completions
 
 Generate completions for bash, zsh, or fish:
 
 ```bash
-eh completion bash
-eh completion zsh
-eh completion fish
+# Generate completions for your shell
+$ eh completion bash
+$ eh completion zsh
+$ eh completion fish
 ```
 
-### Shell Integration Scripts
+For `,` completions:
 
-Sourceable shell integration scripts are available in the Nix package output
-under `$out/nix/integrations/`:
+```bash
+# Print completions for your shell.
+$ , --print-completions bash
+$ , --print-completions zsh
+$ , --print-completions fish
+```
 
-| File        | Description                         |
-| ----------- | ----------------------------------- |
-| `bash.sh`   | Aliases and completion setup (bash) |
-| `zsh.sh`    | Aliases and completion setup (zsh)  |
-| `fish.fish` | Aliases and completion setup (fish) |
-| `direnvrc`  | Direnv integration for flakes       |
+For a local install, generate completion files with:
+
+```bash
+# Write completion files for eh and the comma replacement.
+$ cargo xtask completions bash --main-binary "$HOME/.local/bin/eh" --with-comma
+```
+
+Repeat for `zsh` or `fish`, then install the files from `completions/` in your
+shell's completion directory. Install `,` beside `eh` before running this
+command. Omit `--with-comma` if you only want eh's completions. Nix packages
+install the completion files for you.
 
 ## Configuration
 

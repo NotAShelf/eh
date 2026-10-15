@@ -13,7 +13,9 @@ name       = "eh"
 [dependencies]
 clap.workspace          = true
 clap_complete.workspace = true
+clap_mangen.workspace   = true
 dialoguer.workspace     = true
+dirs.workspace          = true
 eh-config.workspace     = true
 eh-error.workspace      = true
 eh-locate.workspace     = true

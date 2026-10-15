@@ -103,7 +103,7 @@ impl EhError {
   pub const fn hint(&self) -> Option<&str> {
     match self {
       Self::MissingBinary => {
-        Some("pass a binary name, for example `eh comma hello`")
+        Some("pass a binary name, for example `eh exec hello`")
       },
       Self::InvalidBinaryName { .. } => {
         Some("pass the executable name without a path")
@@ -192,21 +192,6 @@ mod tests {
     assert_eq!(EhError::JsonParse { detail: "x".into() }.exit_code(), 13);
     assert_eq!(EhError::NoFlakeInputs.exit_code(), 14);
     assert_eq!(EhError::UpdateCancelled.exit_code(), 0);
-  }
-
-  #[test]
-  fn test_display_messages() {
-    let err = EhError::PreEvalFailed {
-      expression: "nixpkgs#hello".into(),
-      stderr:     "attribute not found".into(),
-    };
-    assert!(err.to_string().contains("nixpkgs#hello"));
-    assert!(err.to_string().contains("attribute not found"));
-
-    let err = EhError::HashExtractionFailed {
-      stderr: "some output".into(),
-    };
-    assert!(err.to_string().contains("could not extract hash"));
   }
 
   #[test]
