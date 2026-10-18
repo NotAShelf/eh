@@ -1,9 +1,11 @@
 {
   lib,
-  rustPlatform,
   stdenv,
+  rustPlatform,
+  makeWrapper,
   installShellFiles,
   versionCheckHook,
+  fzy,
   withComma ? false,
 }: let
   cargoManifest = lib.importTOML ../Cargo.toml;
@@ -41,13 +43,19 @@ in
     doInstallCheck = true;
 
     strictDeps = true;
-    nativeBuildInputs = [installShellFiles];
+    nativeBuildInputs = [installShellFiles] ++ lib.optionals withComma [makeWrapper];
 
     postInstall = ''
       # Install multicall binaries; comma is opt-in.
       cargo xtask multicall \
         --bin-dir $out/bin \
         --main-binary $out/bin/eh ${lib.optionalString withComma "--with-comma"}
+
+      ${lib.optionalString withComma ''
+        wrapProgram $out/bin/, \
+          --argv0 , \
+          --set-default COMMA_PICKER ${lib.getExe fzy}
+      ''}
 
       # Generate shell completions and install them.
       for shell in bash zsh fish; do
