@@ -2,7 +2,7 @@ use std::{
   collections::BTreeSet,
   env::var_os,
   io::IsTerminal,
-  path::PathBuf,
+  path::{Path, PathBuf},
   str::FromStr,
 };
 
@@ -14,8 +14,7 @@ use spam_db::{FileKind, FileRecord, PackagesDb};
 /// rewriting.
 pub fn providers(binary: &str) -> Result<Vec<String>> {
   validate_binary(binary)?;
-  let db = PackagesDb::open(database_path()?)?;
-  let records = db.query(&format!("/bin/{binary}"))?;
+  let records = query_database(&database_path()?, &format!("/bin/{binary}"))?;
   Ok(extract_candidates(binary, records))
 }
 
@@ -101,10 +100,6 @@ pub fn locate(options: &LocateOptions) -> Result<Vec<LocatedFile>> {
   // Compile before opening the database, so malformed patterns are reported
   // independently of whether an index has been generated yet.
   let matcher = LocateMatcher::new(options)?;
-  let db = match &options.database {
-    Some(path) => PackagesDb::open(path)?,
-    None => PackagesDb::open(database_path()?)?,
-  };
   // spam-db only supports literal substring queries. All indexed output paths
   // contain `/`; querying it scans every path, including bucketed databases
   // where an empty query would only scan bucket zero.
@@ -113,7 +108,11 @@ pub fn locate(options: &LocateOptions) -> Result<Vec<LocatedFile>> {
   } else {
     &options.pattern
   };
-  Ok(matcher.filter(db.query(query)?))
+  let records = match &options.database {
+    Some(path) => query_database(path, query)?,
+    None => query_database(&database_path()?, query)?,
+  };
+  Ok(matcher.filter(records))
 }
 
 struct LocateMatcher<'a> {
@@ -185,6 +184,17 @@ impl<'a> LocateMatcher<'a> {
   }
 }
 
+fn query_database(path: &Path, query: &str) -> Result<Vec<FileRecord>> {
+  PackagesDb::open(path)
+    .and_then(|db| db.query(query))
+    .map_err(|source| {
+      EhError::SpamDb {
+        path: path.to_owned(),
+        source,
+      }
+    })
+}
+
 fn database_path() -> Result<PathBuf> {
   if let Some(path) = var_os("SPAM_DATABASE") {
     return Ok(PathBuf::from(path));
@@ -253,6 +263,27 @@ fn select_ambiguous_candidate(
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn missing_database_reports_the_selected_path_and_io_cause() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("missing.db");
+    let options = LocateOptions {
+      pattern: "htop".into(),
+      database: Some(path.clone()),
+      ..Default::default()
+    };
+    let error = locate(&options).unwrap_err();
+    let EhError::SpamDb {
+      path: failed_path,
+      source: spam_db::Error::Io(source),
+    } = error
+    else {
+      panic!("expected a database I/O error")
+    };
+    assert_eq!(failed_path, path);
+    assert_eq!(source.kind(), std::io::ErrorKind::NotFound);
+  }
 
   fn record(
     path: &str,

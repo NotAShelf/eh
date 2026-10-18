@@ -8,8 +8,26 @@ pub enum EhError {
   #[error("invalid binary name '{binary}'")]
   InvalidBinaryName { binary: String },
 
-  #[error(transparent)]
-  SpamDb(#[from] spam_db::Error),
+  #[error("could not read SPAM database '{}': {source}", path.display())]
+  SpamDb {
+    path:   std::path::PathBuf,
+    #[source]
+    source: spam_db::Error,
+  },
+
+  #[error("could not start package picker '{picker}': {source}")]
+  Picker {
+    picker: String,
+    #[source]
+    source: std::io::Error,
+  },
+
+  #[error("could not execute '{}': {source}", program.display())]
+  Execute {
+    program: std::path::PathBuf,
+    #[source]
+    source:  std::io::Error,
+  },
 
   #[error("no package found providing binary '{binary}'")]
   BinaryNotFound { binary: String },
@@ -82,7 +100,10 @@ impl EhError {
       Self::HashExtractionFailed { .. } => 4,
       Self::NoNixFilesFound => 5,
       Self::HashFixFailed { .. } => 6,
-      Self::Io(_) | Self::NixCommand(_) => 8,
+      Self::Io(_)
+      | Self::NixCommand(_)
+      | Self::Picker { .. }
+      | Self::Execute { .. } => 8,
       Self::Regex(_) => 9,
       Self::Utf8(_) => 10,
       Self::PreEvalFailed { .. } => 12,
@@ -93,7 +114,7 @@ impl EhError {
       Self::InvalidEvalInput => 16,
       Self::MissingBinary => 17,
       Self::InvalidBinaryName { .. } => 18,
-      Self::SpamDb(_) => 19,
+      Self::SpamDb { .. } => 19,
       Self::BinaryNotFound { .. } => 20,
       Self::AmbiguousBinary { .. } => 21,
     }
@@ -108,8 +129,15 @@ impl EhError {
       Self::InvalidBinaryName { .. } => {
         Some("pass the executable name without a path")
       },
-      Self::SpamDb(_) => {
-        Some("build a package index with `spam index` or set SPAM_DATABASE")
+      Self::Picker { .. } => {
+        Some("install the picker or select one with --picker / COMMA_PICKER")
+      },
+      Self::SpamDb { .. } => {
+        Some(
+          "build a package index with `spam index --scope pkg --output \
+           <path>` or set SPAM_DATABASE to an existing SPAM index (not a \
+           nix-index database)",
+        )
       },
       Self::BinaryNotFound { .. } => {
         Some("refresh the SPAM database or check the binary name")
@@ -148,6 +176,7 @@ impl EhError {
         Some("pass a package name, flake reference, or path")
       },
       Self::Io(_)
+      | Self::Execute { .. }
       | Self::NixCommand(_)
       | Self::Regex(_)
       | Self::Utf8(_)

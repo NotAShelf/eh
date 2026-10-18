@@ -261,7 +261,10 @@ pub fn run(args: impl IntoIterator<Item = String>) -> Result<i32> {
   }
   // All cache writes precede exec: destructors do not run after a successful
   // exec.
-  Err(child.exec().into())
+  Err(EhError::Execute {
+    source:  child.exec(),
+    program: PathBuf::from(child.get_program()),
+  })
 }
 
 fn providers(binary: &str) -> Result<Vec<String>> {
@@ -420,7 +423,13 @@ fn pick(picker: &str, providers: &[String]) -> Result<Option<String>> {
   let mut process = Command::new(picker)
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
-    .spawn()?;
+    .spawn()
+    .map_err(|source| {
+      EhError::Picker {
+        picker: picker.to_owned(),
+        source,
+      }
+    })?;
   let mut input = process
     .stdin
     .take()
@@ -465,7 +474,12 @@ fn command_path(
   let mut build = source.nix("build");
   build.args(["--print-out-paths", "--no-link"]);
   source.package(&mut build, &entry.derivation);
-  let output = build.stderr(Stdio::inherit()).output()?;
+  let output = build.stderr(Stdio::inherit()).output().map_err(|source| {
+    EhError::Execute {
+      program: PathBuf::from(build.get_program()),
+      source,
+    }
+  })?;
   check_status(output.status)?;
   let paths = String::from_utf8(output.stdout)?;
   // A package can have multiple outputs; use the one actually containing the
@@ -562,6 +576,25 @@ mod tests {
       )
       .unwrap();
     Options::from_arg_matches(&matches).unwrap()
+  }
+
+  #[test]
+  fn missing_picker_is_identified_only_when_selection_is_needed() {
+    let directory = tempfile::tempdir().unwrap();
+    let picker = directory.path().join("missing-picker");
+    let picker = picker.to_str().unwrap();
+    assert_eq!(pick(picker, &["htop".into()]).unwrap(), Some("htop".into()));
+
+    let error = pick(picker, &["htop".into(), "htop-alt".into()]).unwrap_err();
+    let EhError::Picker {
+      picker: failed_picker,
+      source,
+    } = error
+    else {
+      panic!("expected a picker error")
+    };
+    assert_eq!(failed_picker, picker);
+    assert_eq!(source.kind(), io::ErrorKind::NotFound);
   }
 
   #[test]
