@@ -190,6 +190,7 @@ dependencies = [
  "eh-error",
  "regex-lite",
  "spam-db",
+ "tempfile",
 ]
 
 [[package]]

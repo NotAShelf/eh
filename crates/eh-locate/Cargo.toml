@@ -15,3 +15,6 @@ dirs.workspace      = true
 eh-error.workspace  = true
 regex.workspace     = true
 spam-db.workspace   = true
+
+[dev-dependencies]
+tempfile.workspace = true
