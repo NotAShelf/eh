@@ -23,7 +23,7 @@ eh-log      = { path = "./crates/eh-log", version = "1.0.1" }
 
 clap          = { default-features = false, features = [ "std", "help", "derive", "env" ], version = "4.6.7" }
 clap_complete = "4.6.11"
-clap_mangen   = "0.2"
+clap_mangen   = "0.3"
 dialoguer     = { default-features = false, version = "0.12.0" }
 dirs          = "7.0.0"
 nix-command   = "0.2.4"
