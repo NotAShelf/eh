@@ -6,6 +6,8 @@
   installShellFiles,
   versionCheckHook,
   fzy,
+  pkg-config,
+  zstd,
   withComma ? false,
 }: let
   cargoManifest = lib.importTOML ../Cargo.toml;
@@ -43,7 +45,8 @@ in
     doInstallCheck = true;
 
     strictDeps = true;
-    nativeBuildInputs = [installShellFiles] ++ lib.optionals withComma [makeWrapper];
+    nativeBuildInputs = [installShellFiles pkg-config] ++ lib.optionals withComma [makeWrapper];
+    buildInputs = [zstd];
 
     postInstall = ''
       # Install multicall binaries; comma is opt-in.
