@@ -95,7 +95,7 @@ On non-NixOS systems, install eh in your user profile:
 
 ```bash
 # Install eh and its multicall binaries.
-$ nix profile install github:notashelf/eh
+$ nix profile add github:notashelf/eh
 ```
 
 You can also try eh without installing it:
